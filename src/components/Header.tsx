@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ShoppingCart, User, LogOut, Shield, Menu, X, Layers, DollarSign, ChevronDown, HelpCircle, Truck, Info, MessageSquare } from 'lucide-react';
+import { ShoppingCart, User, LogOut, Shield, Menu, X, Layers, DollarSign, ChevronDown, HelpCircle, Truck, Info, MessageSquare, Settings, Package } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 
@@ -182,9 +182,17 @@ export default function Header({ currentPage, onNavigate }: HeaderProps) {
                       <p className="text-sm text-gray-200 font-medium truncate mt-0.5">{user.email}</p>
                     </div>
                     <button
-                      onClick={() => nav('orders')}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
+                      onClick={() => nav('account')}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors flex items-center gap-2"
                     >
+                      <Settings className="w-3.5 h-3.5" />
+                      Account Settings
+                    </button>
+                    <button
+                      onClick={() => nav('orders')}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors flex items-center gap-2"
+                    >
+                      <Package className="w-3.5 h-3.5" />
                       My Orders
                     </button>
                     <button
@@ -242,7 +250,7 @@ export default function Header({ currentPage, onNavigate }: HeaderProps) {
             { id: 'catalog', label: 'Catalog' },
             { id: 'sell', label: 'Sell Cards' },
             ...(isAdmin ? [{ id: 'admin', label: 'Admin Dashboard' }] : []),
-            ...(user ? [{ id: 'orders', label: 'My Orders' }] : []),
+            ...(user ? [{ id: 'account', label: 'Account Settings' }, { id: 'orders', label: 'My Orders' }] : []),
           ].map(({ id, label }) => (
             <button
               key={id}

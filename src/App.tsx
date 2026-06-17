@@ -16,6 +16,7 @@ import FAQPage from './pages/FAQPage';
 import ShippingReturnsPage from './pages/ShippingReturnsPage';
 import ContactPage from './pages/ContactPage';
 import MaintenancePage from './pages/MaintenancePage';
+import AccountPage from './pages/AccountPage';
 import PromoModal from './components/PromoModal';
 import { supabase } from './lib/supabase';
 import { AlertTriangle } from 'lucide-react';
@@ -68,7 +69,7 @@ function AppContent() {
       return;
     }
     if (page === 'admin' && !isAdmin) return;
-    if (page === 'orders' && !user) {
+    if ((page === 'orders' || page === 'account') && !user) {
       setCurrentPage('auth');
       return;
     }
@@ -150,7 +151,8 @@ function AppContent() {
         )}
         {currentPage === 'cart' && <CartPage onNavigate={navigate} />}
         {currentPage === 'auth' && <AuthPage onNavigate={navigate} />}
-        {currentPage === 'orders' && user && <OrdersPage />}
+        {currentPage === 'orders' && user && <AccountPage onNavigate={navigate} initialTab="orders" />}
+      {currentPage === 'account' && user && <AccountPage onNavigate={navigate} />}
         {currentPage === 'sell' && <SellPage onNavigate={navigate} />}
         {currentPage === 'checkout' && <CheckoutPage onNavigate={navigate} />}
         {currentPage === 'about' && <AboutPage onNavigate={navigate} />}

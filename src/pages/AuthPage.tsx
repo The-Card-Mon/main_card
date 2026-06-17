@@ -1,26 +1,45 @@
 import { useState } from 'react';
-import { Layers, Mail, Lock, User, AlertCircle } from 'lucide-react';
+import { Layers, Mail, Lock, User, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface AuthPageProps {
   onNavigate: (page: string) => void;
 }
 
+type Mode = 'signin' | 'signup' | 'forgot';
+
 export default function AuthPage({ onNavigate }: AuthPageProps) {
   const { signIn, signUp } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const reset = () => { setError(null); setSuccess(null); };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    reset();
     setSubmitting(true);
 
-    const result = isSignUp
+    if (mode === 'forgot') {
+      const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/?reset=true',
+      });
+      setSubmitting(false);
+      if (err) {
+        setError(err.message);
+      } else {
+        setSuccess('Password reset link sent — check your email inbox.');
+      }
+      return;
+    }
+
+    const result = mode === 'signup'
       ? await signUp(email, password, fullName)
       : await signIn(email, password);
 
@@ -49,10 +68,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
               <Layers className="w-7 h-7 text-white" strokeWidth={2.5} />
             </div>
             <div>
-              <div
-                className="text-2xl font-bold text-white tracking-wide"
-                style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}
-              >
+              <div className="text-2xl font-bold text-white tracking-wide" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
                 The Card Mon
               </div>
               <div className="text-[10px] text-amber-400/70 tracking-[0.2em] uppercase font-semibold">
@@ -62,12 +78,27 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
           </button>
 
           <p className="text-gray-500 mt-4 text-sm">
-            {isSignUp ? 'Create your collector account' : 'Welcome back, collector'}
+            {mode === 'signup'
+              ? 'Create your collector account'
+              : mode === 'forgot'
+              ? 'Reset your password'
+              : 'Welcome back, collector'}
           </p>
         </div>
 
         {/* Card */}
         <div className="bg-gray-900 rounded-2xl border border-white/10 shadow-2xl p-8">
+
+          {mode === 'forgot' && (
+            <button
+              onClick={() => { setMode('signin'); reset(); }}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 mb-6 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back to Sign In
+            </button>
+          )}
+
           {error && (
             <div className="flex items-center gap-2.5 bg-red-500/10 text-red-400 text-sm px-4 py-3 rounded-xl mb-6 border border-red-500/20">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -75,8 +106,15 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
             </div>
           )}
 
+          {success && (
+            <div className="flex items-start gap-2.5 bg-green-500/10 text-green-400 text-sm px-4 py-3 rounded-xl mb-6 border border-green-500/20">
+              <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              {success}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignUp && (
+            {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                   Full Name
@@ -89,7 +127,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                     placeholder="John Doe"
-                    required={isSignUp}
+                    required
                   />
                 </div>
               </div>
@@ -112,53 +150,71 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
-                  placeholder="Min. 6 characters"
-                  required
-                  minLength={6}
-                />
+            {mode !== 'forgot' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Password
+                  </label>
+                  {mode === 'signin' && (
+                    <button
+                      type="button"
+                      onClick={() => { setMode('forgot'); reset(); }}
+                      className="text-[11px] text-red-400/80 hover:text-red-400 transition-colors font-medium"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                    placeholder="Min. 6 characters"
+                    required
+                    minLength={6}
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {mode === 'forgot' && (
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Enter the email address associated with your account and we'll send you a link to reset your password.
+              </p>
+            )}
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || (!!success && mode === 'forgot')}
               className="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-red-900/30 mt-2"
             >
               {submitting
                 ? 'Please wait...'
-                : isSignUp
-                  ? 'Create Account'
-                  : 'Sign In'}
+                : mode === 'signup'
+                ? 'Create Account'
+                : mode === 'forgot'
+                ? 'Send Reset Link'
+                : 'Sign In'}
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-white/10 text-center">
-            <button
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setError(null);
-              }}
-              className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              {isSignUp
-                ? 'Already have an account? '
-                : "Don't have an account? "}
-              <span className="text-red-400 font-semibold hover:text-red-300">
-                {isSignUp ? 'Sign In' : 'Sign Up'}
-              </span>
-            </button>
-          </div>
+          {mode !== 'forgot' && (
+            <div className="mt-6 pt-6 border-t border-white/10 text-center">
+              <button
+                onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); reset(); }}
+                className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                {mode === 'signup' ? 'Already have an account? ' : "Don't have an account? "}
+                <span className="text-red-400 font-semibold hover:text-red-300">
+                  {mode === 'signup' ? 'Sign In' : 'Sign Up'}
+                </span>
+              </button>
+            </div>
+          )}
         </div>
 
         <button
