@@ -33,7 +33,7 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState('home');
   const [productId, setProductId] = useState<string | null>(null);
   const [catalogType, setCatalogType] = useState<string>('');
-  const { isAdmin, loading, user } = useAuth();
+  const { isAdmin, isStaff, loading, user } = useAuth();
 
   const [maintenance, setMaintenance] = useState<MaintenanceState>({
     enabled: false,
@@ -70,7 +70,7 @@ function AppContent() {
       setCurrentPage('catalog');
       return;
     }
-    if (page === 'admin' && !isAdmin) return;
+    if (page === 'admin' && !isAdmin && !isStaff) return;
     if ((page === 'orders' || page === 'account' || page === 'mystery-boxes') && !user) {
       setCurrentPage('auth');
       return;
@@ -117,7 +117,7 @@ function AppContent() {
   }
 
   // Admin panel gets its own full-screen layout (no main header)
-  if (currentPage === 'admin' && isAdmin) {
+  if (currentPage === 'admin' && (isAdmin || isStaff)) {
     return (
       <>
         {maintenance.enabled && (
