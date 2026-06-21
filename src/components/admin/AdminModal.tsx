@@ -358,7 +358,7 @@ export function ModalCard({
       {/* Close */}
       <button
         onClick={onClose}
-        className="absolute top-3 right-3 z-10 w-8 h-8 bg-black/40 hover:bg-black/60 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-colors"
+        className="absolute top-3 right-3 z-20 w-8 h-8 bg-black/40 hover:bg-black/60 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-colors"
       >
         <X className="w-4 h-4" />
       </button>
