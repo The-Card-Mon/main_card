@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Plus,
   Pencil,
@@ -64,6 +64,14 @@ interface TcgResult {
   ebayNmAvg7d: number | null;
   ebayNmLow: number | null;
   ebayNmHigh: number | null;
+}
+
+interface PkmnCard {
+  id: string;
+  name: string;
+  number: string;
+  set: { name: string };
+  images: { small: string; large: string };
 }
 
 const EMPTY: ProductForm = {
@@ -136,6 +144,14 @@ export default function AdminProducts() {
   const [showTcgResults, setShowTcgResults] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
   const [updateAllResult, setUpdateAllResult] = useState<{ updated: number; skipped: number } | null>(null);
+
+  // Card image search state
+  const [showImageSearch, setShowImageSearch] = useState(false);
+  const [imageSearchQuery, setImageSearchQuery] = useState('');
+  const [imageSearchResults, setImageSearchResults] = useState<PkmnCard[]>([]);
+  const [imageSearchLoading, setImageSearchLoading] = useState(false);
+  const [imageSearchError, setImageSearchError] = useState<string | null>(null);
+  const imageSearchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { fetchProducts(); }, []);
 
@@ -221,6 +237,8 @@ export default function AdminProducts() {
     setTcgResults([]);
     setTcgError(null);
     setShowTcgResults(false);
+    setShowImageSearch(false);
+    setImageSearchResults([]);
     setShowForm(true);
   };
 
@@ -231,6 +249,8 @@ export default function AdminProducts() {
     setTcgResults([]);
     setTcgError(null);
     setShowTcgResults(false);
+    setShowImageSearch(false);
+    setImageSearchResults([]);
     setShowForm(true);
   };
 
@@ -270,6 +290,43 @@ export default function AdminProducts() {
       tcg_price_tier: tierKey,
     }));
     setShowTcgResults(false);
+  };
+
+  const searchCardImages = async (query: string) => {
+    if (!query.trim()) return;
+    setImageSearchLoading(true);
+    setImageSearchError(null);
+    setImageSearchResults([]);
+    try {
+      const q = encodeURIComponent(`name:"${query.trim()}"`);
+      const res = await fetch(
+        `https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=24&select=id,name,number,set,images`,
+        { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+      );
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const json = await res.json();
+      setImageSearchResults(json.data ?? []);
+      if ((json.data ?? []).length === 0) setImageSearchError('No cards found. Try a shorter name.');
+    } catch (err: any) {
+      setImageSearchError(err.message ?? 'Failed to search card images');
+    } finally {
+      setImageSearchLoading(false);
+    }
+  };
+
+  const openImageSearch = () => {
+    setShowImageSearch(true);
+    setImageSearchQuery(form.name.trim());
+    setImageSearchResults([]);
+    setImageSearchError(null);
+    if (form.name.trim()) searchCardImages(form.name.trim());
+    setTimeout(() => imageSearchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+  };
+
+  const pickCardImage = (card: PkmnCard) => {
+    setField('image_url', card.images.large);
+    setPreviewUrl(card.images.large);
+    setShowImageSearch(false);
   };
 
   const updateAllPrices = async () => {
@@ -1001,15 +1058,109 @@ export default function AdminProducts() {
 
                 {/* Image URL */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Image URL</label>
-                  <input
-                    type="text"
-                    value={form.image_url}
-                    onChange={(e) => { setField('image_url', e.target.value); setPreviewUrl(e.target.value); }}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                    placeholder="https://..."
-                  />
-                  <p className="text-xs text-gray-400 mt-1.5 mb-2">Or pick a sample image:</p>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Card Image</label>
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={form.image_url}
+                      onChange={(e) => { setField('image_url', e.target.value); setPreviewUrl(e.target.value); }}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                      placeholder="https://... or search below"
+                    />
+                    <button
+                      type="button"
+                      onClick={openImageSearch}
+                      className="flex items-center gap-1.5 px-3 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shadow-sm"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      Search Photos
+                    </button>
+                  </div>
+
+                  {/* Image search panel */}
+                  {showImageSearch && (
+                    <div ref={imageSearchRef} className="rounded-xl border border-yellow-200 bg-yellow-50/40 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                          <input
+                            type="text"
+                            value={imageSearchQuery}
+                            onChange={(e) => setImageSearchQuery(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && searchCardImages(imageSearchQuery)}
+                            placeholder="e.g. Charizard VMAX"
+                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white"
+                            autoFocus
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => searchCardImages(imageSearchQuery)}
+                          disabled={!imageSearchQuery.trim() || imageSearchLoading}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-colors"
+                        >
+                          {imageSearchLoading
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Search className="w-3.5 h-3.5" />}
+                          {imageSearchLoading ? 'Searching...' : 'Search'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowImageSearch(false)}
+                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {imageSearchError && !imageSearchLoading && (
+                        <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                          {imageSearchError}
+                        </div>
+                      )}
+
+                      {imageSearchResults.length > 0 && (
+                        <>
+                          <p className="text-xs text-gray-500 font-medium">{imageSearchResults.length} result{imageSearchResults.length !== 1 ? 's' : ''} — click a card to use its photo:</p>
+                          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1">
+                            {imageSearchResults.map((card) => (
+                              <button
+                                key={card.id}
+                                type="button"
+                                onClick={() => pickCardImage(card)}
+                                title={`${card.name} · ${card.set.name} #${card.number}`}
+                                className={`group relative rounded-lg overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-md active:scale-95 ${
+                                  form.image_url === card.images.large
+                                    ? 'border-yellow-500 ring-2 ring-yellow-300'
+                                    : 'border-transparent hover:border-yellow-300'
+                                }`}
+                              >
+                                <img
+                                  src={card.images.small}
+                                  alt={card.name}
+                                  className="w-full aspect-[245/342] object-cover bg-gray-100"
+                                  loading="lazy"
+                                />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                                {form.image_url === card.images.large && (
+                                  <div className="absolute top-1 right-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
+                                    <CheckCircle className="w-3 h-3 text-white" />
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {!imageSearchLoading && imageSearchResults.length === 0 && !imageSearchError && (
+                        <p className="text-xs text-gray-400 text-center py-3">Type a card name and press Search.</p>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-400 mt-2 mb-2">Or pick a sample image:</p>
                   <div className="flex flex-wrap gap-2">
                     {POKEMON_IMAGES.map((url, i) => (
                       <button
