@@ -8,7 +8,7 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   define: {
-    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://0ec90b57d6e95fcbda19832f.supabase.co'),
-    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJib2x0IiwicmVmIjoiMGVjOTBiNTdkNmU5NWZjYmRhMTk4MzJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg4ODE1NzQsImV4cCI6MTc1ODg4MTU3NH0.9I8-U0x86Ak8t2DGaIk0HfvTSLsAyzdnz-Nw00mMkKw'),
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://muzrllgnyzwbtcyqybwy.supabase.co'),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11enJsbGdueXp3YnRjeXF5Ynd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNTcyMzcsImV4cCI6MjA5NzYzMzIzN30.RxI8oPXpffblvO601q6RmlT67AcxW_MOvnw6VLJXVLU'),
   },
 });
