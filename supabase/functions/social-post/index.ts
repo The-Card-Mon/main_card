@@ -40,6 +40,29 @@ async function postToFacebook(
   return data.id ?? data.post_id ?? "";
 }
 
+async function updateFacebookPost(postId: string, token: string, message: string): Promise<void> {
+  const res = await fetch(`${GRAPH}/${postId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, access_token: token }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    throw new Error(`Facebook update: ${data.error?.message ?? `HTTP ${res.status}`}`);
+  }
+}
+
+async function deleteFacebookPost(postId: string, token: string): Promise<void> {
+  const res = await fetch(`${GRAPH}/${postId}?access_token=${encodeURIComponent(token)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json();
+  // error code 100 = object does not exist — treat as already deleted
+  if (!res.ok && data.error && data.error.code !== 100) {
+    throw new Error(`Facebook delete: ${data.error?.message ?? `HTTP ${res.status}`}`);
+  }
+}
+
 async function postToInstagram(
   igUserId: string,
   token: string,
@@ -183,6 +206,69 @@ Deno.serve(async (req: Request) => {
 
       await publishPost(supabase, post);
       return respond({ success: true });
+    }
+
+    if (action === "update") {
+      const { post_id, content } = body;
+      if (!post_id || !content) return respond({ error: "post_id and content required" }, 400);
+
+      const token = Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN") ?? "";
+      if (!token) return respond({ error: "FACEBOOK_PAGE_ACCESS_TOKEN not configured" }, 500);
+
+      const { data: post, error } = await supabase
+        .from("social_posts")
+        .select("*")
+        .eq("id", post_id)
+        .single();
+
+      if (error || !post) return respond({ error: "Post not found" }, 404);
+
+      const warnings: string[] = [];
+
+      if (post.facebook_post_id) {
+        try {
+          await updateFacebookPost(post.facebook_post_id, token, content);
+        } catch (err: any) {
+          warnings.push(err.message);
+        }
+      }
+
+      // Instagram does not support caption edits via the API
+      await supabase.from("social_posts").update({
+        content,
+        error_message: warnings.length > 0 ? `DB updated; ${warnings.join("; ")}` : null,
+      }).eq("id", post_id);
+
+      return respond({ success: true, warnings: warnings.length > 0 ? warnings : undefined });
+    }
+
+    if (action === "delete") {
+      const { post_id } = body;
+      if (!post_id) return respond({ error: "post_id required" }, 400);
+
+      const token = Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN") ?? "";
+
+      const { data: post, error } = await supabase
+        .from("social_posts")
+        .select("*")
+        .eq("id", post_id)
+        .single();
+
+      if (error || !post) return respond({ error: "Post not found" }, 404);
+
+      const warnings: string[] = [];
+
+      if (post.facebook_post_id && token) {
+        try {
+          await deleteFacebookPost(post.facebook_post_id, token);
+        } catch (err: any) {
+          warnings.push(err.message);
+        }
+      }
+
+      await supabase.from("social_posts").delete().eq("id", post_id);
+
+      return respond({ success: true, warnings: warnings.length > 0 ? warnings : undefined });
     }
 
     // Check for scheduled posts that are due

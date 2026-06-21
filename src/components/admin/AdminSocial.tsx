@@ -18,6 +18,7 @@ import {
   Key,
   Wifi,
   WifiOff,
+  Pencil,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -86,6 +87,7 @@ export default function AdminSocial() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<PostStatus | 'all'>('all');
   const [showComposer, setShowComposer] = useState(false);
+  const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
 
   // Composer state
   const [platform, setPlatform] = useState<Platform>('both');
@@ -95,7 +97,6 @@ export default function AdminSocial() {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('12:00');
   const [saving, setSaving] = useState(false);
-  const [saveMode, setSaveMode] = useState<'publish' | 'schedule' | 'draft'>('publish');
 
   // Connection state
   const [connectionStatus, setConnectionStatus] = useState<{ checked: boolean; connected: boolean; pageName?: string; error?: string }>({ checked: false, connected: false });
@@ -115,7 +116,6 @@ export default function AdminSocial() {
 
   useEffect(() => {
     fetchPosts();
-    // Fire the scheduled check on load
     supabase.functions.invoke('social-post', { body: { action: 'check-scheduled' } }).catch(() => {});
   }, []);
 
@@ -151,10 +151,74 @@ export default function AdminSocial() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this post?')) return;
-    await supabase.from('social_posts').delete().eq('id', id);
-    await fetchPosts();
+  const handleDelete = async (post: SocialPost) => {
+    const isPublished = post.status === 'published' && post.facebook_post_id;
+    const msg = isPublished
+      ? 'Delete this post from your website AND Facebook?'
+      : 'Delete this post?';
+    if (!confirm(msg)) return;
+
+    setAction(post.id, true);
+    try {
+      const { data, error } = await supabase.functions.invoke('social-post', {
+        body: { action: 'delete', post_id: post.id },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.warnings?.length) {
+        console.warn('Delete warnings:', data.warnings);
+      }
+    } catch {
+      // Still remove from local list — DB delete succeeded even if FB call failed
+    } finally {
+      setAction(post.id, false);
+      await fetchPosts();
+    }
+  };
+
+  const openEditor = (post: SocialPost) => {
+    setEditingPost(post);
+    setContent(post.content);
+    setImageUrl(post.image_url ?? '');
+    setPlatform(post.platform);
+    setIsScheduled(false);
+    setScheduleDate('');
+    setScheduleTime('12:00');
+    setShowComposer(false);
+  };
+
+  const closeEditor = () => {
+    setEditingPost(null);
+    resetComposer();
+  };
+
+  const handleUpdate = async () => {
+    if (!editingPost || !content.trim()) return;
+    setSaving(true);
+    try {
+      const isPublished = editingPost.status === 'published' && editingPost.facebook_post_id;
+
+      if (isPublished) {
+        // Update via edge function so it syncs to Facebook
+        const { data, error } = await supabase.functions.invoke('social-post', {
+          body: { action: 'update', post_id: editingPost.id, content: content.trim() },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.warnings?.length) {
+          alert(`Saved locally. Note: ${data.warnings.join('; ')}`);
+        }
+      } else {
+        // Draft/scheduled — just update DB directly
+        await supabase.from('social_posts').update({
+          content: content.trim(),
+          image_url: imageUrl.trim() || null,
+          platform,
+        }).eq('id', editingPost.id);
+      }
+    } finally {
+      setSaving(false);
+      closeEditor();
+      await fetchPosts();
+    }
   };
 
   const resetComposer = () => {
@@ -164,7 +228,6 @@ export default function AdminSocial() {
     setIsScheduled(false);
     setScheduleDate('');
     setScheduleTime('12:00');
-    setSaveMode('publish');
   };
 
   const handleSave = async (mode: 'publish' | 'schedule' | 'draft') => {
@@ -193,7 +256,6 @@ export default function AdminSocial() {
       setShowComposer(false);
       resetComposer();
       await fetchPosts();
-      // Publish immediately via edge function
       setAction(newPost.id, true);
       await supabase.functions.invoke('social-post', { body: { action: 'publish', post_id: newPost.id } }).catch(() => {});
       setAction(newPost.id, false);
@@ -210,12 +272,14 @@ export default function AdminSocial() {
   const charLimit = platform === 'instagram' ? 2200 : 63206;
   const charCount = content.length;
 
+  const isEditing = !!editingPost;
+  const editIsPublished = editingPost?.status === 'published' && !!editingPost?.facebook_post_id;
+
   return (
     <div className="p-6 lg:p-8 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          {/* Connection status pill */}
           {connectionStatus.checked ? (
             <button
               onClick={checkConnection}
@@ -241,17 +305,127 @@ export default function AdminSocial() {
             </button>
           )}
         </div>
-        <button
-          onClick={() => { setShowComposer(true); }}
-          className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-pink-500 text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity"
-        >
-          <Plus className="w-4 h-4" />
-          New Post
-        </button>
+        {!isEditing && (
+          <button
+            onClick={() => { setShowComposer(true); }}
+            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-pink-500 text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity"
+          >
+            <Plus className="w-4 h-4" />
+            New Post
+          </button>
+        )}
       </div>
 
+      {/* Edit panel */}
+      {isEditing && (
+        <div className="bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-blue-100 bg-blue-50">
+            <div className="flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-blue-600" />
+              <span className="font-semibold text-gray-900 text-sm">Edit Post</span>
+              {editIsPublished && (
+                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full font-medium">
+                  Will update on Facebook
+                </span>
+              )}
+              {editingPost.instagram_post_id && (
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full font-medium">
+                  Instagram captions cannot be edited via API
+                </span>
+              )}
+            </div>
+            <button onClick={closeEditor} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4">
+            {/* Platform selector — only for non-published posts */}
+            {!editIsPublished && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Platform</label>
+                <div className="flex gap-2">
+                  {(['facebook', 'instagram', 'both'] as Platform[]).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPlatform(p)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
+                        platform === p
+                          ? p === 'facebook' ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : p === 'instagram' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-transparent shadow-sm'
+                            : 'bg-gradient-to-r from-blue-600 to-pink-500 text-white border-transparent shadow-sm'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {p === 'facebook' && <Facebook className="w-3.5 h-3.5" />}
+                      {p === 'instagram' && <Instagram className="w-3.5 h-3.5" />}
+                      {p === 'both' && <><Facebook className="w-3.5 h-3.5" /><Instagram className="w-3.5 h-3.5" /></>}
+                      {PLATFORM_LABELS[p]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Content */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Caption / Post Content</label>
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={5}
+                placeholder="Write your post content here..."
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+              <p className="text-xs text-gray-400 mt-1">{content.length.toLocaleString()} characters</p>
+            </div>
+
+            {/* Image URL — only for non-published posts */}
+            {!editIsPublished && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Image URL</label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="url"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full pl-9 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  {imageUrl && (
+                    <div className="w-12 h-10 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
+                      <img src={imageUrl} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+            <button
+              onClick={closeEditor}
+              className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleUpdate}
+              disabled={saving || !content.trim()}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}
+              {editIsPublished ? 'Update Post' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Composer */}
-      {showComposer && (
+      {showComposer && !isEditing && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-pink-50">
             <div className="flex items-center gap-2">
@@ -451,8 +625,14 @@ export default function AdminSocial() {
           filteredPosts.map((post) => {
             const StatusIcon = STATUS_CONFIG[post.status].icon;
             const isActing = actionLoading.has(post.id);
+            const isThisEditing = editingPost?.id === post.id;
             return (
-              <div key={post.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-sm transition-shadow">
+              <div
+                key={post.id}
+                className={`bg-white rounded-xl border overflow-hidden hover:shadow-sm transition-shadow ${
+                  isThisEditing ? 'border-blue-300 ring-1 ring-blue-200' : 'border-gray-200'
+                }`}
+              >
                 <div className="flex items-start gap-4 p-5">
                   {/* Image thumbnail */}
                   {post.image_url ? (
@@ -549,9 +729,18 @@ export default function AdminSocial() {
                       </button>
                     )}
                     <button
-                      onClick={() => handleDelete(post.id)}
-                      title="Delete"
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      onClick={() => openEditor(post)}
+                      title="Edit"
+                      disabled={isActing}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-40"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(post)}
+                      title={post.facebook_post_id ? 'Delete from website & Facebook' : 'Delete'}
+                      disabled={isActing}
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
