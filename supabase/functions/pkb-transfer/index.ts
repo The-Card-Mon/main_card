@@ -9,14 +9,27 @@ const corsHeaders = {
 };
 
 const PKB_CONTRACT = "0x5114fA131C4C0100c29c30563efd121363d51cdC";
-const POLYGON_RPC = "https://polygon-rpc.com";
+const POLYGON_RPCS = [
+  "https://polygon.llamarpc.com",
+  "https://rpc.ankr.com/polygon",
+  "https://polygon-bor-rpc.publicnode.com",
+];
 const ERC20_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
   "function decimals() view returns (uint8)",
 ];
 
-async function getProvider() {
-  return new ethers.JsonRpcProvider(POLYGON_RPC);
+async function getProvider(): Promise<ethers.JsonRpcProvider> {
+  for (const rpc of POLYGON_RPCS) {
+    try {
+      const provider = new ethers.JsonRpcProvider(rpc);
+      await provider.getNetwork(); // verify connectivity
+      return provider;
+    } catch {
+      // try next
+    }
+  }
+  throw new Error("All Polygon RPC endpoints failed");
 }
 
 async function getTreasuryWallet(provider: ethers.JsonRpcProvider) {

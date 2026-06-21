@@ -1,26 +1,40 @@
 // PokeBucks ($PKB) on-chain utilities
 // Contract: 0x5114fA131C4C0100c29c30563efd121363d51cdC (Polygon Mainnet)
-// No third-party library needed — uses raw JSON-RPC and window.ethereum
 
 export const PKB_CONTRACT = '0x5114fA131C4C0100c29c30563efd121363d51cdC';
-const POLYGON_RPC = 'https://polygon-rpc.com';
 const POLYGON_CHAIN_ID = '0x89'; // 137
+
+// Multiple RPC endpoints tried in order — first one that responds wins
+const POLYGON_RPCS = [
+  'https://polygon.llamarpc.com',
+  'https://rpc.ankr.com/polygon',
+  'https://polygon-bor-rpc.publicnode.com',
+];
 
 // ─── Raw Polygon JSON-RPC ────────────────────────────────────────────────────
 
 async function ethCall(to: string, data: string): Promise<string> {
-  const res = await fetch(POLYGON_RPC, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', method: 'eth_call',
-      params: [{ to, data }, 'latest'],
-      id: 1,
-    }),
-  });
-  const json = await res.json();
-  if (json.error) throw new Error(json.error.message ?? 'RPC error');
-  return json.result as string;
+  let lastErr: Error = new Error('All RPC endpoints failed');
+  for (const rpc of POLYGON_RPCS) {
+    try {
+      const res = await fetch(rpc, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'eth_call',
+          params: [{ to, data }, 'latest'],
+          id: 1,
+        }),
+      });
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message ?? 'RPC error');
+      if (json.result !== undefined) return json.result as string;
+    } catch (err) {
+      lastErr = err as Error;
+    }
+  }
+  throw lastErr;
 }
 
 // Cache decimals — only fetched once per session
@@ -28,20 +42,22 @@ let _decimals: number | null = null;
 async function getDecimals(): Promise<number> {
   if (_decimals !== null) return _decimals;
   const result = await ethCall(PKB_CONTRACT, '0x313ce567');
-  _decimals = parseInt(result.slice(-2), 16); // last byte
+  // result is a 32-byte hex; decimals is the last byte
+  _decimals = parseInt(result.slice(-2), 16);
+  if (isNaN(_decimals) || _decimals < 0 || _decimals > 77) _decimals = 18;
   return _decimals;
 }
 
 /** Returns the human-readable $PKB balance (e.g. 250, not 250 * 10^18). */
 export async function getOnChainPkbBalance(address: string): Promise<number> {
-  const paddedAddr = address.slice(2).padStart(64, '0');
+  const paddedAddr = address.replace(/^0x/, '').padStart(64, '0');
   const [rawHex, decimals] = await Promise.all([
     ethCall(PKB_CONTRACT, '0x70a08231' + paddedAddr),
     getDecimals(),
   ]);
-  const raw = BigInt(rawHex === '0x' ? '0x0' : rawHex);
+  if (!rawHex || rawHex === '0x' || rawHex === '0x0') return 0;
+  const raw = BigInt(rawHex);
   const divisor = 10n ** BigInt(decimals);
-  // Return whole-unit amount
   return Number(raw / divisor);
 }
 
@@ -62,13 +78,13 @@ export function isMetaMaskAvailable(): boolean {
 
 /** Prompts MetaMask, switches to Polygon if needed, returns the wallet address. */
 export async function connectMetaMask(): Promise<string> {
-  if (!window.ethereum) throw new Error('MetaMask is not installed. Please install MetaMask to connect your wallet.');
+  if (!window.ethereum) {
+    throw new Error('MetaMask is not installed. Please install MetaMask to connect your wallet.');
+  }
 
-  // Request account access
   const accounts = (await window.ethereum.request({ method: 'eth_requestAccounts' })) as string[];
   if (!accounts.length) throw new Error('No accounts returned from MetaMask.');
 
-  // Ensure Polygon network
   const chainId = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
   if (chainId.toLowerCase() !== POLYGON_CHAIN_ID) {
     try {
@@ -77,7 +93,7 @@ export async function connectMetaMask(): Promise<string> {
         params: [{ chainId: POLYGON_CHAIN_ID }],
       });
     } catch {
-      // Chain not added — add it
+      // Chain not in MetaMask yet — add it
       await window.ethereum.request({
         method: 'wallet_addEthereumChain',
         params: [{

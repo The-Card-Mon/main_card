@@ -75,6 +75,8 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
   // Wallet / on-chain
   const [walletAddress, setWalletAddress] = useState<string | null>(profile?.wallet_address ?? null);
   const [onChainBalance, setOnChainBalance] = useState<number | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
   const [walletConnecting, setWalletConnecting] = useState(false);
   const [walletMsg, setWalletMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -120,10 +122,13 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
   }, [profile]);
 
   useEffect(() => {
-    if (!walletAddress) { setOnChainBalance(null); return; }
+    if (!walletAddress) { setOnChainBalance(null); setBalanceError(null); return; }
+    setBalanceLoading(true);
+    setBalanceError(null);
     getOnChainPkbBalance(walletAddress)
-      .then(setOnChainBalance)
-      .catch(() => setOnChainBalance(null));
+      .then((bal) => { setOnChainBalance(bal); setBalanceError(null); })
+      .catch((err) => { setOnChainBalance(null); setBalanceError(err?.message ?? 'Could not fetch balance'); })
+      .finally(() => setBalanceLoading(false));
   }, [walletAddress]);
 
   const handleConnectWallet = async () => {
@@ -615,10 +620,32 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                           </div>
                           <div className="text-right">
                             <p className="text-xs text-gray-400 font-medium mb-0.5">On-Chain Balance</p>
-                            <p className="text-lg font-black text-gray-900" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
-                              {onChainBalance !== null ? onChainBalance.toLocaleString() : '—'}
-                              <span className="text-xs font-semibold text-yellow-600 ml-1">$PKB</span>
-                            </p>
+                            {balanceLoading ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Loader2 className="w-4 h-4 animate-spin text-yellow-500" />
+                                <span className="text-xs text-gray-400">Loading...</span>
+                              </div>
+                            ) : balanceError ? (
+                              <button
+                                onClick={() => {
+                                  setBalanceLoading(true);
+                                  setBalanceError(null);
+                                  getOnChainPkbBalance(walletAddress!)
+                                    .then((b) => { setOnChainBalance(b); })
+                                    .catch((e) => setBalanceError(e?.message ?? 'Error'))
+                                    .finally(() => setBalanceLoading(false));
+                                }}
+                                className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 justify-end"
+                                title={balanceError}
+                              >
+                                RPC error — retry
+                              </button>
+                            ) : (
+                              <p className="text-lg font-black text-gray-900" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
+                                {onChainBalance !== null ? onChainBalance.toLocaleString() : '0'}
+                                <span className="text-xs font-semibold text-yellow-600 ml-1">$PKB</span>
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-xl">
