@@ -10,6 +10,7 @@ import AdminModal from '../components/admin/AdminModal';
 import AdminSocial from '../components/admin/AdminSocial';
 import AdminRewards from '../components/admin/AdminRewards';
 import AdminStaff from '../components/admin/AdminStaff';
+import AdminFinance from '../components/admin/AdminFinance';
 
 interface AdminPageProps {
   onNavigate: (page: string) => void;
@@ -32,6 +33,7 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
       {section === 'modal' && <AdminModal />}
       {section === 'social' && <AdminSocial />}
       {section === 'rewards' && <AdminRewards />}
+      {section === 'finance' && <AdminFinance />}
       {section === 'staff' && <AdminStaff />}
       {section === 'settings' && <AdminSettings />}
     </AdminLayout>

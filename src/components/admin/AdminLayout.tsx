@@ -16,13 +16,14 @@ import {
   Coins,
   UserCog,
   Shield,
+  TrendingUp,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export type AdminSection =
   | 'dashboard' | 'products' | 'orders' | 'customers'
-  | 'sell-requests' | 'modal' | 'social' | 'rewards' | 'staff' | 'settings';
+  | 'sell-requests' | 'modal' | 'social' | 'rewards' | 'finance' | 'staff' | 'settings';
 
 const SECTION_TITLES: Record<AdminSection, string> = {
   dashboard: 'Dashboard',
@@ -33,6 +34,7 @@ const SECTION_TITLES: Record<AdminSection, string> = {
   modal: 'Promotions',
   social: 'Social Media',
   rewards: 'PokeBucks Rewards',
+  finance: 'Finance & Tax',
   staff: 'Staff Management',
   settings: 'Settings',
 };
@@ -56,6 +58,7 @@ const NAV: { id: AdminSection; label: string; icon: typeof LayoutDashboard; admi
   { id: 'modal',         label: 'Promotions',     icon: Megaphone,      adminOnly: true },
   { id: 'social',        label: 'Social Media',   icon: Share2,         adminOnly: true },
   { id: 'rewards',       label: 'PokeBucks',      icon: Coins,          adminOnly: true },
+  { id: 'finance',       label: 'Finance & Tax',  icon: TrendingUp,     adminOnly: true },
   { id: 'staff',         label: 'Staff',          icon: UserCog,        adminOnly: true, dividerBefore: true },
   { id: 'settings',      label: 'Settings',       icon: Settings,       adminOnly: true },
 ];
