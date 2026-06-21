@@ -64,7 +64,16 @@ Deno.serve(async (req: Request) => {
         },
         body: body ? JSON.stringify(body) : undefined,
       });
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      let data: unknown;
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        // ShipStation returned non-JSON (likely HTML error page)
+        const preview = text.replace(/<[^>]*>/g, "").trim().slice(0, 200);
+        data = { message: preview || `HTTP ${res.status}` };
+      }
       return { ok: res.ok, status: res.status, data };
     };
 
