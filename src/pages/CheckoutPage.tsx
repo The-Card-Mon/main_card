@@ -884,8 +884,9 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
       clearCart();
       setStep('done');
       setConfirmed(true);
-    } catch {
-      alert('Payment succeeded but failed to save order. Please contact support.');
+    } catch (err) {
+      const msg = (err as { message?: string })?.message ?? 'Unknown error';
+      alert(`Payment succeeded but failed to save order. Please contact support.\n\nError: ${msg}`);
     }
   };
 
