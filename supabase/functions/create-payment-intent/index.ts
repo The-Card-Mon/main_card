@@ -33,12 +33,13 @@ Deno.serve(async (req: Request) => {
     );
     if (authError || !user) return respond({ error: "Unauthorized" }, 401);
 
-    const { items, pkb_discount = 0, shipping_state = "", shipping_country = "US", shipping_method_id = null } = await req.json() as {
+    const { items, pkb_discount = 0, shipping_state = "", shipping_country = "US", shipping_method_id = null, discount_code = null } = await req.json() as {
       items: { product_id: string; quantity: number }[];
       pkb_discount?: number;
       shipping_state?: string;
       shipping_country?: string;
       shipping_method_id?: string | null;
+      discount_code?: string | null;
     };
 
     if (!items || items.length === 0) return respond({ error: "No items provided" }, 400);
@@ -76,6 +77,39 @@ Deno.serve(async (req: Request) => {
       subtotalCents += Math.round(product.price * 100) * item.quantity;
     }
 
+    // Validate and apply discount code
+    let codeDiscountCents = 0;
+    let validatedDiscountCode: string | null = null;
+    if (discount_code) {
+      const { data: codeRow } = await supabase
+        .from("discount_codes")
+        .select("id, code, type, value, min_order_amount, max_uses, uses_count, expires_at, is_active")
+        .eq("code", discount_code.trim().toUpperCase())
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!codeRow) return respond({ error: "Invalid or inactive discount code" }, 400);
+      if (codeRow.expires_at && new Date(codeRow.expires_at) < new Date()) return respond({ error: "Discount code has expired" }, 400);
+      if (codeRow.max_uses !== null && codeRow.uses_count >= codeRow.max_uses) return respond({ error: "Discount code usage limit reached" }, 400);
+      const subtotalDollars = subtotalCents / 100;
+      if (Number(codeRow.min_order_amount) > 0 && subtotalDollars < Number(codeRow.min_order_amount)) {
+        return respond({ error: `Minimum order of $${Number(codeRow.min_order_amount).toFixed(2)} required` }, 400);
+      }
+
+      if (codeRow.type === "percentage") {
+        codeDiscountCents = Math.round(subtotalCents * (Number(codeRow.value) / 100));
+      } else {
+        codeDiscountCents = Math.min(Math.round(Number(codeRow.value) * 100), subtotalCents);
+      }
+      validatedDiscountCode = codeRow.code;
+
+      // Increment usage count
+      await supabase
+        .from("discount_codes")
+        .update({ uses_count: codeRow.uses_count + 1 })
+        .eq("id", codeRow.id);
+    }
+
     // Validate and apply PKB discount (10 PKB = $1 = 100 cents)
     let discountCents = 0;
     const pkbApplied = Math.floor(pkb_discount ?? 0);
@@ -92,7 +126,7 @@ Deno.serve(async (req: Request) => {
       discountCents = Math.floor(pkbApplied / 10) * 100;
     }
 
-    const afterDiscountCents = Math.max(subtotalCents - discountCents, 50);
+    const afterDiscountCents = Math.max(subtotalCents - discountCents - codeDiscountCents, 50);
     const stateCode  = shipping_state.trim().toUpperCase();
     const countryCode = shipping_country.trim().toUpperCase();
 
@@ -132,6 +166,8 @@ Deno.serve(async (req: Request) => {
       metadata: {
         user_id: user.id,
         pkb_discount: String(pkbApplied),
+        discount_code: validatedDiscountCode ?? "",
+        code_discount_cents: String(codeDiscountCents),
         subtotal_cents: String(subtotalCents),
         shipping_cents: String(shippingCents),
         shipping_method: shippingMethodName ?? "",
@@ -147,6 +183,8 @@ Deno.serve(async (req: Request) => {
       total_cents: chargedCents,
       subtotal_cents: subtotalCents,
       discount_cents: discountCents,
+      code_discount_cents: codeDiscountCents,
+      discount_code: validatedDiscountCode,
       shipping_cents: shippingCents,
       tax_cents: taxCents,
       tax_rate: taxRate,

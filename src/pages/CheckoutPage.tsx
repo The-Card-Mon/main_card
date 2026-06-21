@@ -6,7 +6,7 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { ArrowLeft, ArrowRight, CheckCircle, Lock, Package, ShoppingBag, Coins, TrendingUp, X, Zap, ExternalLink, Truck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle, Lock, Package, ShoppingBag, Coins, TrendingUp, X, Zap, ExternalLink, Truck, Tag, Check } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -63,9 +63,22 @@ interface OrderSummaryProps {
   taxRate?: number;
   shippingCost?: number;
   shippingMethodName?: string;
+  discountCode: string;
+  onDiscountCodeChange: (v: string) => void;
+  onApplyDiscount: () => void;
+  applyingDiscount: boolean;
+  appliedDiscountCode: string | null;
+  discountAmount: number;
+  discountError: string | null;
+  onClearDiscount: () => void;
 }
 
-function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarnPreview, isLoggedIn, taxAmount = 0, taxRate = 0, shippingCost = 0, shippingMethodName }: OrderSummaryProps) {
+function OrderSummary({
+  pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarnPreview, isLoggedIn,
+  taxAmount = 0, taxRate = 0, shippingCost = 0, shippingMethodName,
+  discountCode, onDiscountCodeChange, onApplyDiscount, applyingDiscount,
+  appliedDiscountCode, discountAmount, discountError, onClearDiscount,
+}: OrderSummaryProps) {
   const { items, totalPrice } = useCart();
   const pkbDiscount = pkbToApply / 10;
   // Max applicable: leave at least $1 for Stripe, rounded to nearest 10 PKB
@@ -109,6 +122,15 @@ function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarn
             {shippingCost === 0 ? 'Free' : `$${shippingCost.toFixed(2)}`}
           </span>
         </div>
+        {discountAmount > 0 && appliedDiscountCode && (
+          <div className="flex justify-between text-sm">
+            <span className="text-green-700 font-medium flex items-center gap-1">
+              <Tag className="w-3.5 h-3.5" />
+              Discount ({appliedDiscountCode})
+            </span>
+            <span className="font-semibold text-green-600">-${discountAmount.toFixed(2)}</span>
+          </div>
+        )}
         {pkbToApply > 0 && (
           <div className="flex justify-between text-sm">
             <span className="text-yellow-700 font-medium flex items-center gap-1">
@@ -131,6 +153,47 @@ function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarn
           <span className="font-bold text-gray-900 text-lg" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
             ${finalTotal.toFixed(2)}
           </span>
+        </div>
+      </div>
+
+      {/* Discount code */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 border-b border-gray-200">
+          <Tag className="w-3.5 h-3.5 text-gray-500" />
+          <span className="text-xs font-bold text-gray-700">Discount Code</span>
+        </div>
+        <div className="p-3 bg-white">
+          {appliedDiscountCode ? (
+            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+              <Check className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+              <span className="text-xs font-bold text-green-700 flex-1 font-mono">{appliedDiscountCode}</span>
+              <button onClick={onClearDiscount} className="text-gray-400 hover:text-gray-600">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex gap-2">
+                <input
+                  value={discountCode}
+                  onChange={(e) => onDiscountCodeChange(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === 'Enter' && onApplyDiscount()}
+                  placeholder="Enter code"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                />
+                <button
+                  onClick={onApplyDiscount}
+                  disabled={!discountCode.trim() || applyingDiscount}
+                  className="px-3 py-2 bg-gray-900 hover:bg-gray-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-xs font-bold rounded-lg transition-all"
+                >
+                  {applyingDiscount ? <div className="animate-spin w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" /> : 'Apply'}
+                </button>
+              </div>
+              {discountError && (
+                <p className="text-xs text-red-600 mt-1.5">{discountError}</p>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -581,6 +644,13 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   const [taxRate, setTaxRate] = useState(0);
   const [chargedTotal, setChargedTotal] = useState(0);
 
+  // Discount code
+  const [discountCodeInput, setDiscountCodeInput] = useState('');
+  const [appliedDiscountCode, setAppliedDiscountCode] = useState<string | null>(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [applyingDiscount, setApplyingDiscount] = useState(false);
+  const [discountError, setDiscountError] = useState<string | null>(null);
+
   // Shipping methods
   const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([]);
   const [selectedMethodId, setSelectedMethodId] = useState('');
@@ -615,8 +685,51 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   const pkbDiscount = pkbToApply / 10;
   const selectedMethod = shippingMethods.find((m) => m.id === selectedMethodId) ?? null;
   const shippingCost = selectedMethod ? Number(selectedMethod.price) : 0;
-  const finalTotal = Math.max(totalPrice + shippingCost - pkbDiscount, 1.0); // keep $1 min for Stripe
+  const finalTotal = Math.max(totalPrice + shippingCost - discountAmount - pkbDiscount, 1.0);
   const pkbEarnPreview = Math.floor(finalTotal * 10);
+
+  const handleApplyDiscount = async () => {
+    const code = discountCodeInput.trim().toUpperCase();
+    if (!code) return;
+    setApplyingDiscount(true);
+    setDiscountError(null);
+    try {
+      const { data, error } = await supabase
+        .from('discount_codes')
+        .select('id, code, type, value, min_order_amount, max_uses, uses_count, expires_at, is_active')
+        .eq('code', code)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) { setDiscountError('Invalid or inactive discount code.'); return; }
+      if (data.expires_at && new Date(data.expires_at) < new Date()) { setDiscountError('This discount code has expired.'); return; }
+      if (data.max_uses !== null && data.uses_count >= data.max_uses) { setDiscountError('This discount code has reached its usage limit.'); return; }
+      if (Number(data.min_order_amount) > 0 && totalPrice < Number(data.min_order_amount)) {
+        setDiscountError(`Minimum order of $${Number(data.min_order_amount).toFixed(2)} required.`);
+        return;
+      }
+
+      const amount = data.type === 'percentage'
+        ? Math.min(totalPrice * (Number(data.value) / 100), totalPrice)
+        : Math.min(Number(data.value), totalPrice);
+
+      setAppliedDiscountCode(data.code);
+      setDiscountAmount(parseFloat(amount.toFixed(2)));
+      setDiscountCodeInput('');
+    } catch {
+      setDiscountError('Failed to apply discount code. Please try again.');
+    } finally {
+      setApplyingDiscount(false);
+    }
+  };
+
+  const handleClearDiscount = () => {
+    setAppliedDiscountCode(null);
+    setDiscountAmount(0);
+    setDiscountError(null);
+    setDiscountCodeInput('');
+  };
 
   const stripePromise = useMemo(() => loadStripe(STRIPE_KEY ?? ''), []);
   const stripeOptions = useMemo(
@@ -673,6 +786,7 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
           shipping_state: shipping.state,
           shipping_country: shipping.country,
           shipping_method_id: selectedMethodId || null,
+          discount_code: appliedDiscountCode ?? undefined,
         }),
       });
 
@@ -714,6 +828,8 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
           status: 'pending',
           stripe_payment_intent_id: paymentIntentId,
           payment_status: 'paid',
+          discount_code: appliedDiscountCode ?? null,
+          discount_amount: discountAmount,
         })
         .select()
         .single();
@@ -829,6 +945,14 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
               taxRate={taxRate}
               shippingCost={shippingCost}
               shippingMethodName={selectedMethod?.name}
+              discountCode={discountCodeInput}
+              onDiscountCodeChange={setDiscountCodeInput}
+              onApplyDiscount={handleApplyDiscount}
+              applyingDiscount={applyingDiscount}
+              appliedDiscountCode={appliedDiscountCode}
+              discountAmount={discountAmount}
+              discountError={discountError}
+              onClearDiscount={handleClearDiscount}
             />
           </div>
         </div>
