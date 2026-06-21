@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Package, Clock, Truck, CheckCircle } from 'lucide-react';
+import { Package, Clock, Truck, CheckCircle, ExternalLink, MapPin } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Order, OrderItem, Product } from '../types';
 
 interface OrderWithItems extends Order {
+  shipping_method_name: string | null;
+  shipping_cost: number;
+  tracking_number: string | null;
+  tracking_carrier: string | null;
+  shipped_at: string | null;
   order_items: (OrderItem & { product: Product | null })[];
 }
 
@@ -14,6 +19,21 @@ const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; bg: str
   shipped: { icon: Truck, color: 'text-indigo-600', bg: 'bg-indigo-50' },
   delivered: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
 };
+
+const CARRIER_TRACKING_URLS: Record<string, (n: string) => string> = {
+  USPS:              (n) => `https://tools.usps.com/go/TrackConfirmAction?tLabels=${n}`,
+  UPS:               (n) => `https://www.ups.com/track?tracknum=${n}`,
+  FedEx:             (n) => `https://www.fedex.com/fedextrack/?tracknumbers=${n}`,
+  DHL:               (n) => `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${n}`,
+  'Amazon Logistics':(n) => `https://www.amazon.com/progress-tracker/package/?_encoding=UTF8&packageIndex=0&orderId=${n}`,
+  OnTrac:            (n) => `https://www.ontrac.com/tracking.asp?tracking_number=${n}`,
+};
+
+function getTrackingUrl(carrier: string | null, number: string): string | null {
+  if (!carrier || !number) return null;
+  const fn = CARRIER_TRACKING_URLS[carrier];
+  return fn ? fn(number) : null;
+}
 
 export default function OrdersPage() {
   const { user } = useAuth();
@@ -25,7 +45,7 @@ export default function OrdersPage() {
     (async () => {
       const { data } = await supabase
         .from('orders')
-        .select('*, order_items(*)')
+        .select('*, order_items(*, product:products(*))')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       setOrders((data as OrderWithItems[]) ?? []);
@@ -66,6 +86,7 @@ export default function OrdersPage() {
             {orders.map((order) => {
               const config = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
               const StatusIcon = config.icon;
+              const trackingUrl = getTrackingUrl(order.tracking_carrier, order.tracking_number ?? '');
 
               return (
                 <div
@@ -100,9 +121,47 @@ export default function OrdersPage() {
                     </div>
 
                     {order.shipping_address && (
-                      <p className="text-xs text-gray-400 mb-3">
-                        Ship to: {order.shipping_address}
-                      </p>
+                      <div className="flex items-start gap-1.5 mb-3">
+                        <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                        <p className="text-xs text-gray-400">{order.shipping_address}</p>
+                      </div>
+                    )}
+
+                    {/* Shipping method */}
+                    {order.shipping_method_name && (
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <Truck className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <p className="text-xs text-gray-500">
+                          {order.shipping_method_name}
+                          {Number(order.shipping_cost) > 0 && ` · $${Number(order.shipping_cost).toFixed(2)}`}
+                          {Number(order.shipping_cost) === 0 && ' · Free'}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Tracking info */}
+                    {order.tracking_number && (
+                      <div className="flex items-center gap-2 mb-3 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                        <Truck className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-indigo-700">
+                            {order.tracking_carrier ? `${order.tracking_carrier} Tracking` : 'Tracking Number'}
+                          </p>
+                          <p className="text-xs font-mono text-indigo-600 truncate">{order.tracking_number}</p>
+                        </div>
+                        {trackingUrl ? (
+                          <a
+                            href={trackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex-shrink-0 transition-colors"
+                          >
+                            Track <ExternalLink className="w-3 h-3" />
+                          </a>
+                        ) : (
+                          <span className="text-xs text-indigo-500 flex-shrink-0">No link</span>
+                        )}
+                      </div>
                     )}
 
                     <div className="border-t border-gray-50 pt-3 space-y-2">

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   Search, X, Clock, AlertCircle, Truck, CheckCircle, ChevronRight,
   Package, MapPin, Calendar, DollarSign, Trash2, RotateCcw, Loader2,
-  AlertTriangle, XCircle,
+  AlertTriangle, XCircle, Save,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -16,6 +16,11 @@ interface OrderWithItems {
   total: number;
   tax_amount: number;
   shipping_address: string | null;
+  shipping_method_name: string | null;
+  shipping_cost: number;
+  tracking_number: string | null;
+  tracking_carrier: string | null;
+  shipped_at: string | null;
   created_at: string;
   stripe_payment_intent_id: string | null;
   stripe_refund_id: string | null;
@@ -67,7 +72,45 @@ export default function AdminOrders() {
   const [deleteTarget, setDeleteTarget] = useState<OrderWithItems | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Tracking state
+  const [trackingNum, setTrackingNum] = useState('');
+  const [trackingCarrier, setTrackingCarrier] = useState('');
+  const [savingTracking, setSavingTracking] = useState(false);
+  const [trackingMsg, setTrackingMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   useEffect(() => { fetchOrders(); }, []);
+
+  const openOrder = (order: OrderWithItems) => {
+    setSelectedOrder(order);
+    setTrackingNum(order.tracking_number ?? '');
+    setTrackingCarrier(order.tracking_carrier ?? '');
+    setTrackingMsg(null);
+  };
+
+  const saveTracking = async () => {
+    if (!selectedOrder) return;
+    setSavingTracking(true);
+    setTrackingMsg(null);
+    const { error } = await supabase
+      .from('orders')
+      .update({
+        tracking_number: trackingNum.trim() || null,
+        tracking_carrier: trackingCarrier.trim() || null,
+        shipped_at: trackingNum.trim() ? (selectedOrder.shipped_at ?? new Date().toISOString()) : null,
+      })
+      .eq('id', selectedOrder.id);
+    if (error) {
+      setTrackingMsg({ type: 'error', text: error.message });
+    } else {
+      setTrackingMsg({ type: 'success', text: 'Tracking info saved.' });
+      await fetchOrders();
+      setSelectedOrder((prev) =>
+        prev ? { ...prev, tracking_number: trackingNum.trim() || null, tracking_carrier: trackingCarrier.trim() || null } : null
+      );
+      setTimeout(() => setTrackingMsg(null), 2500);
+    }
+    setSavingTracking(false);
+  };
 
   const fetchOrders = async () => {
     const { data } = await supabase
@@ -199,7 +242,7 @@ export default function AdminOrders() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => setSelectedOrder(order)}>
+                  <tr key={order.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => openOrder(order)}>
                     <td className="px-5 py-3.5">
                       <p className="text-sm font-semibold font-mono text-gray-900">#{order.id.slice(0, 8).toUpperCase()}</p>
                       <p className="text-xs text-gray-400 truncate max-w-[120px]">{order.user_id.slice(0, 12)}...</p>
@@ -347,14 +390,76 @@ export default function AdminOrders() {
 
               <div className="border-t border-gray-100" />
 
+              {/* Tracking */}
+              <div className="px-6 py-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tracking</p>
+                {trackingMsg && (
+                  <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${trackingMsg.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                    {trackingMsg.type === 'success' ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />}
+                    {trackingMsg.text}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Carrier</label>
+                  <select
+                    value={trackingCarrier}
+                    onChange={(e) => setTrackingCarrier(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+                  >
+                    <option value="">Select carrier...</option>
+                    {['USPS', 'UPS', 'FedEx', 'DHL', 'Amazon Logistics', 'OnTrac', 'Other'].map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Tracking Number</label>
+                  <input
+                    value={trackingNum}
+                    onChange={(e) => setTrackingNum(e.target.value)}
+                    placeholder="e.g. 9400111899223387623910"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
+                  />
+                </div>
+                <button
+                  onClick={saveTracking}
+                  disabled={savingTracking}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 hover:bg-gray-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
+                >
+                  {savingTracking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {savingTracking ? 'Saving...' : 'Save Tracking'}
+                </button>
+                {selectedOrder.shipped_at && (
+                  <p className="text-xs text-gray-400 text-center">
+                    Marked shipped {new Date(selectedOrder.shipped_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                )}
+              </div>
+
+              <div className="border-t border-gray-100" />
+
               {/* Summary */}
               <div className="px-6 py-4 space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Order Summary</p>
                 <div className="flex items-center gap-3 text-sm">
                   <DollarSign className="w-4 h-4 text-gray-400" />
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="ml-auto font-bold text-gray-900">${(Number(selectedOrder.total) - Number(selectedOrder.tax_amount ?? 0)).toFixed(2)}</span>
+                  <span className="ml-auto font-bold text-gray-900">${(Number(selectedOrder.total) - Number(selectedOrder.tax_amount ?? 0) - Number(selectedOrder.shipping_cost ?? 0)).toFixed(2)}</span>
                 </div>
+                {Number(selectedOrder.shipping_cost) > 0 && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Truck className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">{selectedOrder.shipping_method_name ?? 'Shipping'}</span>
+                    <span className="ml-auto font-semibold text-gray-700">${Number(selectedOrder.shipping_cost).toFixed(2)}</span>
+                  </div>
+                )}
+                {Number(selectedOrder.shipping_cost) === 0 && selectedOrder.shipping_method_name && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Truck className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">{selectedOrder.shipping_method_name}</span>
+                    <span className="ml-auto font-semibold text-green-600">Free</span>
+                  </div>
+                )}
                 {Number(selectedOrder.tax_amount) > 0 && (
                   <div className="flex items-center gap-3 text-sm">
                     <DollarSign className="w-4 h-4 text-gray-400" />

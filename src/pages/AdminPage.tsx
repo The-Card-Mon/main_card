@@ -11,6 +11,7 @@ import AdminSocial from '../components/admin/AdminSocial';
 import AdminRewards from '../components/admin/AdminRewards';
 import AdminStaff from '../components/admin/AdminStaff';
 import AdminFinance from '../components/admin/AdminFinance';
+import AdminShipping from '../components/admin/AdminShipping';
 
 interface AdminPageProps {
   onNavigate: (page: string) => void;
@@ -34,6 +35,7 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
       {section === 'social' && <AdminSocial />}
       {section === 'rewards' && <AdminRewards />}
       {section === 'finance' && <AdminFinance />}
+      {section === 'shipping' && <AdminShipping />}
       {section === 'staff' && <AdminStaff />}
       {section === 'settings' && <AdminSettings />}
     </AdminLayout>

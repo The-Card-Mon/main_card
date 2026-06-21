@@ -33,14 +33,30 @@ Deno.serve(async (req: Request) => {
     );
     if (authError || !user) return respond({ error: "Unauthorized" }, 401);
 
-    const { items, pkb_discount = 0, shipping_state = "", shipping_country = "US" } = await req.json() as {
+    const { items, pkb_discount = 0, shipping_state = "", shipping_country = "US", shipping_method_id = null } = await req.json() as {
       items: { product_id: string; quantity: number }[];
       pkb_discount?: number;
       shipping_state?: string;
       shipping_country?: string;
+      shipping_method_id?: string | null;
     };
 
     if (!items || items.length === 0) return respond({ error: "No items provided" }, 400);
+
+    // Fetch shipping method cost server-side
+    let shippingCents = 0;
+    let shippingMethodName: string | null = null;
+    if (shipping_method_id) {
+      const { data: method } = await supabase
+        .from("shipping_methods")
+        .select("name, price, is_active")
+        .eq("id", shipping_method_id)
+        .single();
+      if (method && method.is_active) {
+        shippingCents = Math.round(Number(method.price) * 100);
+        shippingMethodName = method.name;
+      }
+    }
 
     // Fetch actual prices — never trust client amounts
     const { data: products, error: prodError } = await supabase
@@ -77,8 +93,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const afterDiscountCents = Math.max(subtotalCents - discountCents, 50);
-
-    // ── Resolve tax rate based on shipping location ──────────────────────────
     const stateCode  = shipping_state.trim().toUpperCase();
     const countryCode = shipping_country.trim().toUpperCase();
 
@@ -104,9 +118,9 @@ Deno.serve(async (req: Request) => {
       taxRate = matched ? Number(matched.rate) : 0;
     }
 
-    // Tax is applied to the after-discount amount
+    // Tax is applied to the after-discount amount (before shipping)
     const taxCents = Math.round(afterDiscountCents * taxRate);
-    const chargedCents = afterDiscountCents + taxCents;
+    const chargedCents = afterDiscountCents + taxCents + shippingCents;
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
       apiVersion: "2024-06-20",
@@ -119,6 +133,8 @@ Deno.serve(async (req: Request) => {
         user_id: user.id,
         pkb_discount: String(pkbApplied),
         subtotal_cents: String(subtotalCents),
+        shipping_cents: String(shippingCents),
+        shipping_method: shippingMethodName ?? "",
         tax_cents: String(taxCents),
         tax_rate: String(taxRate),
         shipping_state: stateCode,
@@ -131,6 +147,7 @@ Deno.serve(async (req: Request) => {
       total_cents: chargedCents,
       subtotal_cents: subtotalCents,
       discount_cents: discountCents,
+      shipping_cents: shippingCents,
       tax_cents: taxCents,
       tax_rate: taxRate,
     });

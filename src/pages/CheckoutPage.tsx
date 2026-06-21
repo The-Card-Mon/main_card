@@ -6,7 +6,7 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { ArrowLeft, ArrowRight, CheckCircle, Lock, Package, ShoppingBag, Coins, TrendingUp, X, Zap, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle, Lock, Package, ShoppingBag, Coins, TrendingUp, X, Zap, ExternalLink, Truck } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -25,6 +25,16 @@ interface ShippingData {
   state: string;
   zip: string;
   country: string;
+}
+
+interface ShippingMethod {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  estimated_days_min: number;
+  estimated_days_max: number;
+  carrier: string | null;
 }
 
 const EMPTY_SHIPPING: ShippingData = {
@@ -51,9 +61,11 @@ interface OrderSummaryProps {
   isLoggedIn: boolean;
   taxAmount?: number;
   taxRate?: number;
+  shippingCost?: number;
+  shippingMethodName?: string;
 }
 
-function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarnPreview, isLoggedIn, taxAmount = 0, taxRate = 0 }: OrderSummaryProps) {
+function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarnPreview, isLoggedIn, taxAmount = 0, taxRate = 0, shippingCost = 0, shippingMethodName }: OrderSummaryProps) {
   const { items, totalPrice } = useCart();
   const pkbDiscount = pkbToApply / 10;
   // Max applicable: leave at least $1 for Stripe, rounded to nearest 10 PKB
@@ -92,8 +104,10 @@ function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarn
           <span className="font-semibold text-gray-900">${totalPrice.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Shipping</span>
-          <span className="font-semibold text-green-600">Free</span>
+          <span className="text-gray-500">{shippingMethodName ?? 'Shipping'}</span>
+          <span className={`font-semibold ${shippingCost === 0 ? 'text-green-600' : 'text-gray-900'}`}>
+            {shippingCost === 0 ? 'Free' : `$${shippingCost.toFixed(2)}`}
+          </span>
         </div>
         {pkbToApply > 0 && (
           <div className="flex justify-between text-sm">
@@ -182,9 +196,12 @@ interface ShippingFormProps {
   onContinue: () => void;
   loading: boolean;
   onNavigate: (page: string) => void;
+  shippingMethods: ShippingMethod[];
+  selectedMethodId: string;
+  onSelectMethod: (id: string) => void;
 }
 
-function ShippingForm({ shipping, onChange, onContinue, loading, onNavigate }: ShippingFormProps) {
+function ShippingForm({ shipping, onChange, onContinue, loading, onNavigate, shippingMethods, selectedMethodId, onSelectMethod }: ShippingFormProps) {
   const set = (field: keyof ShippingData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...shipping, [field]: e.target.value });
 
@@ -195,7 +212,8 @@ function ShippingForm({ shipping, onChange, onContinue, loading, onNavigate }: S
     shipping.address1.trim() &&
     shipping.city.trim() &&
     shipping.state.trim() &&
-    shipping.zip.trim();
+    shipping.zip.trim() &&
+    (shippingMethods.length === 0 || selectedMethodId);
 
   const fieldClass =
     'w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white transition-colors placeholder-gray-400';
@@ -283,6 +301,50 @@ function ShippingForm({ shipping, onChange, onContinue, loading, onNavigate }: S
           </div>
         </div>
       </div>
+
+      {/* Shipping method selection */}
+      {shippingMethods.length > 0 && (
+        <div className="mt-5">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Shipping Method</p>
+          <div className="space-y-2">
+            {shippingMethods.map((method) => {
+              const days = method.estimated_days_min === method.estimated_days_max
+                ? `${method.estimated_days_min} day${method.estimated_days_min === 1 ? '' : 's'}`
+                : `${method.estimated_days_min}–${method.estimated_days_max} days`;
+              const selected = selectedMethodId === method.id;
+              return (
+                <button
+                  key={method.id}
+                  type="button"
+                  onClick={() => onSelectMethod(method.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left transition-all ${
+                    selected
+                      ? 'border-red-500 bg-red-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selected ? 'border-red-500' : 'border-gray-300'}`}>
+                    {selected && <div className="w-2 h-2 rounded-full bg-red-500" />}
+                  </div>
+                  <Truck className={`w-4 h-4 flex-shrink-0 ${selected ? 'text-red-500' : 'text-gray-400'}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold ${selected ? 'text-red-700' : 'text-gray-800'}`}>{method.name}</p>
+                    {method.description && (
+                      <p className="text-xs text-gray-500 mt-0.5">{method.description}</p>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className={`text-sm font-bold ${selected ? 'text-red-600' : 'text-gray-900'}`}>
+                      {Number(method.price) === 0 ? 'Free' : `$${Number(method.price).toFixed(2)}`}
+                    </p>
+                    <p className="text-xs text-gray-400">{days}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <button
         onClick={onContinue}
@@ -519,6 +581,25 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   const [taxRate, setTaxRate] = useState(0);
   const [chargedTotal, setChargedTotal] = useState(0);
 
+  // Shipping methods
+  const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([]);
+  const [selectedMethodId, setSelectedMethodId] = useState('');
+
+  useEffect(() => {
+    supabase
+      .from('shipping_methods')
+      .select('id, name, description, price, estimated_days_min, estimated_days_max, carrier')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .then(({ data }) => {
+        const methods = (data as ShippingMethod[]) ?? [];
+        setShippingMethods(methods);
+        if (methods.length > 0 && !selectedMethodId) {
+          setSelectedMethodId(methods[0].id);
+        }
+      });
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     supabase
@@ -532,7 +613,9 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   }, [user]);
 
   const pkbDiscount = pkbToApply / 10;
-  const finalTotal = Math.max(totalPrice - pkbDiscount, 1.0); // keep $1 min for Stripe
+  const selectedMethod = shippingMethods.find((m) => m.id === selectedMethodId) ?? null;
+  const shippingCost = selectedMethod ? Number(selectedMethod.price) : 0;
+  const finalTotal = Math.max(totalPrice + shippingCost - pkbDiscount, 1.0); // keep $1 min for Stripe
   const pkbEarnPreview = Math.floor(finalTotal * 10);
 
   const stripePromise = useMemo(() => loadStripe(STRIPE_KEY ?? ''), []);
@@ -589,6 +672,7 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
           pkb_discount: pkbToApply,
           shipping_state: shipping.state,
           shipping_country: shipping.country,
+          shipping_method_id: selectedMethodId || null,
         }),
       });
 
@@ -624,6 +708,9 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
           total: chargedTotal || finalTotal,
           tax_amount: taxAmount,
           shipping_address: shippingAddress,
+          shipping_method_id: selectedMethodId || null,
+          shipping_method_name: selectedMethod?.name ?? null,
+          shipping_cost: shippingCost,
           status: 'pending',
           stripe_payment_intent_id: paymentIntentId,
           payment_status: 'paid',
@@ -712,6 +799,9 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
                 onContinue={handleContinueToPayment}
                 loading={loadingIntent}
                 onNavigate={onNavigate}
+                shippingMethods={shippingMethods}
+                selectedMethodId={selectedMethodId}
+                onSelectMethod={setSelectedMethodId}
               />
             )}
             {step === 'payment' && clientSecret && stripeOptions && (
@@ -737,6 +827,8 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
               isLoggedIn={!!user}
               taxAmount={taxAmount}
               taxRate={taxRate}
+              shippingCost={shippingCost}
+              shippingMethodName={selectedMethod?.name}
             />
           </div>
         </div>
