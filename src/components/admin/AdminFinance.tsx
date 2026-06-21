@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DollarSign, TrendingUp, Receipt, Plus, CreditCard as Edit2, Trash2, Loader2, CheckCircle, AlertTriangle, X, ToggleLeft, ToggleRight, BarChart2, ShoppingBag, RefreshCw } from 'lucide-react';
+import { DollarSign, TrendingUp, Receipt, Plus, CreditCard as Edit2, Trash2, Loader2, CheckCircle, AlertTriangle, X, ToggleLeft, ToggleRight, BarChart2, ShoppingBag, RefreshCw, MapPin } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface TaxRule {
@@ -40,6 +40,8 @@ export default function AdminFinance() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [seedingStates, setSeedingStates] = useState(false);
+  const [seedMsg, setSeedMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Form
   const [showForm, setShowForm] = useState(false);
@@ -148,6 +150,20 @@ export default function AdminFinance() {
     setDeletingId(null);
   };
 
+  const seedStateTaxRates = async () => {
+    setSeedingStates(true);
+    setSeedMsg(null);
+    const { data, error } = await supabase.rpc('seed_us_state_tax_rates');
+    setSeedingStates(false);
+    if (error) {
+      setSeedMsg({ type: 'error', text: error.message });
+    } else {
+      setSeedMsg({ type: 'success', text: `Loaded ${data} US state tax rates. States with 0% tax are marked inactive.` });
+      await loadAll();
+    }
+    setTimeout(() => setSeedMsg(null), 5000);
+  };
+
   const maxMonthRevenue = Math.max(...(stats?.byMonth.map((m) => m.revenue) ?? [1]), 1);
 
   return (
@@ -226,22 +242,48 @@ export default function AdminFinance() {
             <h2 className="font-semibold text-gray-900">Tax Rules</h2>
             <p className="text-xs text-gray-400 mt-0.5">Configure sales tax rates applied at checkout</p>
           </div>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-lg transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Rule
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={seedStateTaxRates}
+              disabled={seedingStates}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-colors"
+              title="Auto-populate all 50 US state sales tax rates"
+            >
+              {seedingStates ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+              {seedingStates ? 'Importing...' : 'Import US State Rates'}
+            </button>
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Rule
+            </button>
+          </div>
         </div>
+
+        {seedMsg && (
+          <div className={`flex items-start gap-2 text-xs px-6 py-3 border-b ${seedMsg.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+            {seedMsg.type === 'success' ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />}
+            {seedMsg.text}
+          </div>
+        )}
 
         {loading ? (
           <div className="p-6 space-y-3">{[1,2].map((i) => <div key={i} className="h-14 bg-gray-100 rounded-lg animate-pulse" />)}</div>
         ) : rules.length === 0 ? (
-          <div className="text-center py-12">
-            <Receipt className="w-8 h-8 text-gray-200 mx-auto mb-3" />
+          <div className="text-center py-12 px-6">
+            <MapPin className="w-8 h-8 text-gray-200 mx-auto mb-3" />
             <p className="text-sm text-gray-400 font-medium">No tax rules yet</p>
-            <p className="text-xs text-gray-300 mt-1">Add a rule to automatically apply tax at checkout</p>
+            <p className="text-xs text-gray-300 mt-1 mb-4">Click "Import US State Rates" to load all 50 state rates at once, or add custom rules manually.</p>
+            <button
+              onClick={seedStateTaxRates}
+              disabled={seedingStates}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
+            >
+              {seedingStates ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+              {seedingStates ? 'Importing...' : 'Import US State Rates'}
+            </button>
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
