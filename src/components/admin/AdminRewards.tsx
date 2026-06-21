@@ -14,8 +14,10 @@ import {
   Users,
   TrendingUp,
   AlertTriangle,
+  Flame,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getOnChainPkbTotalSupply, PKB_CONTRACT } from '../../lib/pkb';
 
 type WithdrawalStatus = 'pending' | 'processing' | 'completed' | 'rejected';
 
@@ -72,6 +74,7 @@ export default function AdminRewards() {
   const [rejectForm, setRejectForm] = useState<{ id: string; note: string } | null>(null);
   const [showAward, setShowAward] = useState(false);
   const [showBalances, setShowBalances] = useState(false);
+  const [onChainSupply, setOnChainSupply] = useState<number | null>(null);
 
   // Manual award form
   const [customers, setCustomers] = useState<{ id: string; email: string; full_name: string | null }[]>([]);
@@ -116,7 +119,12 @@ export default function AdminRewards() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+    getOnChainPkbTotalSupply()
+      .then(setOnChainSupply)
+      .catch(() => setOnChainSupply(null));
+  }, []);
 
   const setActing = (id: string, on: boolean) =>
     setActionLoading((prev) => { const s = new Set(prev); on ? s.add(id) : s.delete(id); return s; });
@@ -188,9 +196,30 @@ export default function AdminRewards() {
   return (
     <div className="p-6 lg:p-8 space-y-6">
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* On-chain total supply */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="w-9 h-9 rounded-lg bg-yellow-50 flex items-center justify-center mb-3">
+            <Flame className="w-4 h-4 text-yellow-600" />
+          </div>
+          <p className="text-xs text-gray-400 font-medium">Total $PKB Minted (On-Chain)</p>
+          <p className="text-2xl font-bold text-gray-900 mt-0.5" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
+            {onChainSupply === null
+              ? <span className="text-gray-300 text-lg">Loading...</span>
+              : onChainSupply.toLocaleString()}
+          </p>
+          <a
+            href={`https://polygonscan.com/token/${PKB_CONTRACT}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 mt-0.5"
+          >
+            View on Polygonscan <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        </div>
+
         {[
-          { label: 'Total PKB in Circulation', value: totalIssued.toLocaleString(), sub: `≈ $${(totalIssued / 10).toFixed(2)}`, icon: Coins, color: 'text-yellow-600', bg: 'bg-yellow-50' },
+          { label: 'PKB Issued via Rewards', value: totalIssued.toLocaleString(), sub: `≈ $${(totalIssued / 10).toFixed(2)} in app`, icon: Coins, color: 'text-yellow-600', bg: 'bg-yellow-50' },
           { label: 'Pending Withdrawals', value: pendingCount, sub: 'awaiting processing', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: 'Total PKB Withdrawn', value: totalWithdrawn.toLocaleString(), sub: `≈ $${(totalWithdrawn / 10).toFixed(2)} on Polygon`, icon: ArrowDownToLine, color: 'text-green-600', bg: 'bg-green-50' },
         ].map(({ label, value, sub, icon: Icon, color, bg }) => (

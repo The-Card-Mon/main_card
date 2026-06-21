@@ -48,6 +48,18 @@ async function getDecimals(): Promise<number> {
   return _decimals;
 }
 
+/** Returns the total on-chain supply of $PKB (human-readable). */
+export async function getOnChainPkbTotalSupply(): Promise<number> {
+  const [rawHex, decimals] = await Promise.all([
+    ethCall(PKB_CONTRACT, '0x18160ddd'), // totalSupply()
+    getDecimals(),
+  ]);
+  if (!rawHex || rawHex === '0x' || rawHex === '0x0') return 0;
+  const raw = BigInt(rawHex);
+  const divisor = 10n ** BigInt(decimals);
+  return Number(raw / divisor);
+}
+
 /** Returns the human-readable $PKB balance (e.g. 250, not 250 * 10^18). */
 export async function getOnChainPkbBalance(address: string): Promise<number> {
   const paddedAddr = address.replace(/^0x/, '').padStart(64, '0');
