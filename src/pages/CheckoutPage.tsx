@@ -487,7 +487,7 @@ function ConfirmationScreen({ onNavigate, pkbEarned, pkbTxHash, walletAddress }:
 
 export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string) => void }) {
   const { items, totalPrice, clearCart } = useCart();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const [step, setStep] = useState<'shipping' | 'payment' | 'done'>('shipping');
   const [shipping, setShipping] = useState<ShippingData>({
