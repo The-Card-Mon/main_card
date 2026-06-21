@@ -46,11 +46,10 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "SHIPSTATION_API_KEY not configured." }, 503);
     }
 
-    // ShipStation uses Basic auth. If key already looks like base64 use as-is,
-    // otherwise base64-encode it (handles "key:secret" format too).
-    const ssAuth = apiKey.includes(":")
-      ? `Basic ${btoa(apiKey)}`
-      : `Basic ${apiKey}`;
+    // ShipStation Basic auth: base64(apiKey:apiSecret).
+    // If the stored value already contains ":" it's "key:secret" — encode it.
+    // Otherwise encode it as "key:" (key only, empty secret).
+    const ssAuth = `Basic ${btoa(apiKey.includes(":") ? apiKey : `${apiKey}:`)}`;
 
     const { action, ...payload } = await req.json() as { action: string; [key: string]: unknown };
 
