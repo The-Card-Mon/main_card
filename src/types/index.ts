@@ -49,6 +49,7 @@ export interface Profile {
   email: string;
   full_name: string | null;
   role: 'admin' | 'customer';
+  wallet_address: string | null;
   created_at: string;
 }
 

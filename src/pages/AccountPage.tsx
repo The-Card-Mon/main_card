@@ -25,9 +25,13 @@ import {
   TrendingUp,
   Gift,
   Wallet,
+  Link,
+  Unlink,
+  Zap,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { connectMetaMask, getOnChainPkbBalance, isMetaMaskAvailable, shortAddress } from '../lib/pkb';
 import type { Order, OrderItem, Product } from '../types';
 
 type Tab = 'overview' | 'orders' | 'rewards' | 'profile' | 'security';
@@ -58,7 +62,7 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   // Rewards
-  type LedgerRow = { id: string; type: string; amount: number; description: string; created_at: string };
+  type LedgerRow = { id: string; type: string; amount: number; description: string; created_at: string; pkb_tx_hash: string | null };
   type WithdrawalRow = { id: string; amount: number; wallet_address: string; status: string; tx_hash: string | null; created_at: string };
   const [pkbLedger, setPkbLedger] = useState<LedgerRow[]>([]);
   const [pkbWithdrawals, setPkbWithdrawals] = useState<WithdrawalRow[]>([]);
@@ -67,6 +71,12 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawMsg, setWithdrawMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Wallet / on-chain
+  const [walletAddress, setWalletAddress] = useState<string | null>(profile?.wallet_address ?? null);
+  const [onChainBalance, setOnChainBalance] = useState<number | null>(null);
+  const [walletConnecting, setWalletConnecting] = useState(false);
+  const [walletMsg, setWalletMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Profile edit
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
@@ -106,7 +116,38 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
 
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
+    if (profile?.wallet_address) setWalletAddress(profile.wallet_address);
   }, [profile]);
+
+  useEffect(() => {
+    if (!walletAddress) { setOnChainBalance(null); return; }
+    getOnChainPkbBalance(walletAddress)
+      .then(setOnChainBalance)
+      .catch(() => setOnChainBalance(null));
+  }, [walletAddress]);
+
+  const handleConnectWallet = async () => {
+    setWalletConnecting(true);
+    setWalletMsg(null);
+    try {
+      const address = await connectMetaMask();
+      await supabase.from('profiles').update({ wallet_address: address }).eq('id', user!.id);
+      setWalletAddress(address);
+      setWalletMsg({ type: 'success', text: `Wallet connected! $PKB rewards will be sent here automatically.` });
+    } catch (err: any) {
+      setWalletMsg({ type: 'error', text: err.message ?? 'Failed to connect wallet.' });
+    } finally {
+      setWalletConnecting(false);
+      setTimeout(() => setWalletMsg(null), 5000);
+    }
+  };
+
+  const handleDisconnectWallet = async () => {
+    if (!confirm('Disconnect your wallet? You will no longer receive on-chain $PKB rewards automatically.')) return;
+    await supabase.from('profiles').update({ wallet_address: null }).eq('id', user!.id);
+    setWalletAddress(null);
+    setOnChainBalance(null);
+  };
 
   if (!user) {
     return (
@@ -515,6 +556,122 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                   </div>
                 </div>
 
+                {/* Wallet connect card */}
+                <div className={`rounded-2xl border overflow-hidden shadow-sm ${walletAddress ? 'bg-white border-gray-100' : 'bg-gradient-to-br from-gray-900 to-gray-800 border-gray-700'}`}>
+                  <div className={`px-5 py-4 border-b ${walletAddress ? 'border-gray-100' : 'border-white/10'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Wallet className={`w-4 h-4 ${walletAddress ? 'text-green-500' : 'text-gray-400'}`} />
+                        <span className={`font-semibold text-sm ${walletAddress ? 'text-gray-900' : 'text-white'}`}>
+                          Polygon Wallet
+                        </span>
+                        {walletAddress && (
+                          <span className="text-[10px] font-bold bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">Connected</span>
+                        )}
+                      </div>
+                      {walletAddress && (
+                        <button
+                          onClick={handleDisconnectWallet}
+                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Unlink className="w-3 h-3" />
+                          Disconnect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    {walletMsg && (
+                      <div className={`flex items-start gap-2 text-sm px-4 py-3 rounded-xl border mb-4 ${
+                        walletMsg.type === 'success'
+                          ? 'bg-green-50 text-green-700 border-green-200'
+                          : 'bg-red-50 text-red-700 border-red-200'
+                      }`}>
+                        {walletMsg.type === 'success'
+                          ? <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          : <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+                        {walletMsg.text}
+                      </div>
+                    )}
+
+                    {walletAddress ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-gray-400 font-medium mb-0.5">Wallet Address</p>
+                            <div className="flex items-center gap-2">
+                              <code className="text-sm font-mono font-semibold text-gray-800">{shortAddress(walletAddress)}</code>
+                              <a
+                                href={`https://polygonscan.com/address/${walletAddress}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-gray-400 hover:text-blue-600 transition-colors"
+                                title="View on Polygonscan"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-400 font-medium mb-0.5">On-Chain Balance</p>
+                            <p className="text-lg font-black text-gray-900" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
+                              {onChainBalance !== null ? onChainBalance.toLocaleString() : '—'}
+                              <span className="text-xs font-semibold text-yellow-600 ml-1">$PKB</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-xl">
+                          <Zap className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                          <p className="text-xs text-green-700 font-medium">
+                            $PKB rewards are sent automatically to this wallet after every purchase.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <p className="text-sm text-gray-400 leading-relaxed">
+                          Connect your Polygon wallet to receive real $PKB tokens on-chain after every purchase. Completely optional — you can still shop and redeem rewards without it.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          {[
+                            { icon: Zap, text: 'Auto-sent after every purchase' },
+                            { icon: TrendingUp, text: 'Real tokens on Polygon' },
+                            { icon: Gift, text: '10 $PKB per $1 spent' },
+                            { icon: ExternalLink, text: 'Trade or hold on Polygon' },
+                          ].map(({ icon: Icon, text }) => (
+                            <div key={text} className="flex items-center gap-1.5 text-gray-500">
+                              <Icon className="w-3 h-3 text-yellow-500 flex-shrink-0" />
+                              {text}
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          onClick={handleConnectWallet}
+                          disabled={walletConnecting || !isMetaMaskAvailable()}
+                          className="flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:opacity-90 disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm"
+                        >
+                          {walletConnecting
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Link className="w-4 h-4" />}
+                          {walletConnecting ? 'Connecting...' : isMetaMaskAvailable() ? 'Connect MetaMask' : 'Install MetaMask first'}
+                        </button>
+                        {!isMetaMaskAvailable() && (
+                          <a
+                            href="https://metamask.io/download/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Download MetaMask
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Transaction history */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-100">
@@ -552,9 +709,21 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                                 {typeLabel[row.type] ?? row.type} · {new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                               </p>
                             </div>
-                            <span className={`text-sm font-bold flex-shrink-0 ${isCredit ? 'text-green-600' : 'text-red-500'}`}>
-                              {isCredit ? '+' : ''}{Number(row.amount).toLocaleString()} $PKB
-                            </span>
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className={`text-sm font-bold ${isCredit ? 'text-green-600' : 'text-red-500'}`}>
+                                {isCredit ? '+' : ''}{Number(row.amount).toLocaleString()} $PKB
+                              </span>
+                              {row.pkb_tx_hash && (
+                                <a
+                                  href={`https://polygonscan.com/tx/${row.pkb_tx_hash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+                                >
+                                  On-chain <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
