@@ -296,7 +296,207 @@ function MethodsTab() {
   );
 }
 
-// ─── EasyShip Tab ─────────────────────────────────────────────────────────────
+// ─── ShipStation Tab ──────────────────────────────────────────────────────────
+
+interface SSRate {
+  serviceName: string;
+  serviceCode: string;
+  carrierCode: string;
+  shipmentCost: number;
+  otherCost: number;
+}
+
+function ShipStationTab() {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [sampleRates, setSampleRates] = useState<SSRate[]>([]);
+
+  const callShipStation = async (body: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/shipstation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify(body),
+    });
+    return { res, data: await res.json() };
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setSampleRates([]);
+    try {
+      const { res, data } = await callShipStation({
+        action: 'rates',
+        toCity: 'New York',
+        toState: 'NY',
+        toPostalCode: '10001',
+        toCountry: 'US',
+        items: [{ quantity: 1 }],
+      });
+      if (!res.ok || data.error) {
+        setTestResult({ ok: false, message: data.error ?? 'Connection failed' });
+      } else {
+        const rates = (data.rates ?? []) as SSRate[];
+        setSampleRates(rates.slice(0, 6));
+        setTestResult({ ok: true, message: `Connected! Found ${rates.length} available services.` });
+      }
+    } catch (err: any) {
+      setTestResult({ ok: false, message: err.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header banner */}
+      <div className="bg-gradient-to-r from-slate-50 to-gray-50 border border-gray-200 rounded-2xl p-5 flex gap-4">
+        <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center flex-shrink-0 border border-gray-200">
+          <Truck className="w-6 h-6 text-gray-700" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-gray-900 mb-1">ShipStation Integration</h3>
+          <p className="text-sm text-gray-600 mb-3">
+            Get live carrier rates, generate shipping labels, and auto-fill tracking numbers directly from the Orders page.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="https://ship.shipstation.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              ShipStation Dashboard
+            </a>
+            <a
+              href="https://www.shipstation.com/docs/api/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              API Documentation
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Connection test */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Key className="w-4 h-4 text-gray-500" />
+          <h4 className="font-semibold text-gray-900 text-sm">Connection Status</h4>
+        </div>
+        <p className="text-sm text-gray-500">
+          Your ShipStation API key is configured. Click "Test Connection" to verify live carrier access.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleTestConnection}
+            disabled={testing}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            {testing ? 'Testing...' : 'Test Connection'}
+          </button>
+          {testResult && (
+            <div className={`flex items-center gap-2 text-sm font-medium ${testResult.ok ? 'text-green-700' : 'text-red-600'}`}>
+              {testResult.ok ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+              {testResult.message}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Sample rates preview */}
+      {sampleRates.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-5">
+          <div className="mb-4">
+            <h4 className="font-semibold text-gray-900 text-sm">Available Services</h4>
+            <p className="text-xs text-gray-500 mt-0.5">Sample rates — destination NYC 10001, 1 card</p>
+          </div>
+          <div className="space-y-2">
+            {sampleRates.map((rate) => (
+              <div key={`${rate.carrierCode}-${rate.serviceCode}`} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                <div className="w-8 h-8 bg-white rounded-lg border border-gray-200 flex items-center justify-center flex-shrink-0">
+                  <Truck className="w-4 h-4 text-gray-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{rate.serviceName}</p>
+                  <p className="text-xs text-gray-500 uppercase">{rate.carrierCode}</p>
+                </div>
+                <span className="text-sm font-bold text-gray-900 flex-shrink-0">
+                  ${(rate.shipmentCost + rate.otherCost).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* How it works */}
+      <div className="bg-gray-50 rounded-2xl border border-gray-100 p-5">
+        <h4 className="font-semibold text-gray-700 text-sm mb-3">How it works in Orders</h4>
+        <div className="space-y-2.5">
+          {[
+            'Open any order in Admin → Orders',
+            'Click "ShipStation" in the order drawer header',
+            'Live carrier rates are fetched from ShipStation',
+            'Select a service — a label is created and tracking is auto-filled',
+          ].map((step, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="w-5 h-5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</div>
+              <p className="text-sm text-gray-600">{step}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main AdminShipping ───────────────────────────────────────────────────────
+
+type Tab = 'methods' | 'shipstation';
+
+export default function AdminShipping() {
+  const [tab, setTab] = useState<Tab>('methods');
+
+  return (
+    <div className="p-6 lg:p-8">
+      <div className="mb-6">
+        <h2 className="text-lg font-bold text-gray-900">Shipping</h2>
+        <p className="text-sm text-gray-500 mt-0.5">Manage shipping methods and carrier integrations.</p>
+      </div>
+
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
+        <button
+          onClick={() => setTab('methods')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            tab === 'methods' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Truck className="w-4 h-4" />
+          Shipping Methods
+        </button>
+        <button
+          onClick={() => setTab('shipstation')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            tab === 'shipstation' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Zap className="w-4 h-4" />
+          ShipStation
+        </button>
+      </div>
+
+      {tab === 'methods' && <MethodsTab />}
+      {tab === 'shipstation' && <ShipStationTab />}
+    </div>
+  );
+}
 
 interface EasyShipRate {
   courier_service_id: string;
@@ -493,45 +693,4 @@ function EasyShipTab() {
   );
 }
 
-// ─── Main AdminShipping ───────────────────────────────────────────────────────
 
-type Tab = 'methods' | 'easyship';
-
-export default function AdminShipping() {
-  const [tab, setTab] = useState<Tab>('methods');
-
-  return (
-    <div className="p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <h2 className="text-lg font-bold text-gray-900">Shipping</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Manage shipping methods and carrier integrations.</p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
-        <button
-          onClick={() => setTab('methods')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-            tab === 'methods' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Truck className="w-4 h-4" />
-          Shipping Methods
-        </button>
-        <button
-          onClick={() => setTab('easyship')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-            tab === 'easyship' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Zap className="w-4 h-4" />
-          EasyShip
-        </button>
-      </div>
-
-      {tab === 'methods' && <MethodsTab />}
-      {tab === 'easyship' && <EasyShipTab />}
-    </div>
-  );
-}

@@ -55,14 +55,12 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-interface EasyShipRate {
-  courier_service_id: string;
-  courier_name: string;
-  service_name: string;
-  total_charge: number;
-  currency: string;
-  min_delivery_time: number;
-  max_delivery_time: number;
+interface SSRate {
+  serviceName: string;
+  serviceCode: string;
+  carrierCode: string;
+  shipmentCost: number;
+  otherCost: number;
 }
 
 export default function AdminOrders() {
@@ -88,12 +86,12 @@ export default function AdminOrders() {
   const [savingTracking, setSavingTracking] = useState(false);
   const [trackingMsg, setTrackingMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // EasyShip state
-  const [easyshipOpen, setEasyshipOpen] = useState(false);
-  const [easyshipRates, setEasyshipRates] = useState<EasyShipRate[]>([]);
+  // ShipStation state
+  const [ssOpen, setSsOpen] = useState(false);
+  const [ssRates, setSsRates] = useState<SSRate[]>([]);
   const [loadingRates, setLoadingRates] = useState(false);
   const [ratesError, setRatesError] = useState<string | null>(null);
-  const [creatingShipment, setCreatingShipment] = useState<string | null>(null);
+  const [creatingLabel, setCreatingLabel] = useState<string | null>(null);
   const [shipmentMsg, setShipmentMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => { fetchOrders(); }, []);
@@ -103,8 +101,8 @@ export default function AdminOrders() {
     setTrackingNum(order.tracking_number ?? '');
     setTrackingCarrier(order.tracking_carrier ?? '');
     setTrackingMsg(null);
-    setEasyshipOpen(false);
-    setEasyshipRates([]);
+    setSsOpen(false);
+    setSsRates([]);
     setRatesError(null);
     setShipmentMsg(null);
   };
@@ -134,9 +132,9 @@ export default function AdminOrders() {
     setSavingTracking(false);
   };
 
-  const callEasyship = async (body: Record<string, unknown>) => {
+  const callShipStation = async (body: Record<string, unknown>) => {
     const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/easyship`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/shipstation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
       body: JSON.stringify(body),
@@ -144,38 +142,31 @@ export default function AdminOrders() {
     return { res, data: await res.json() };
   };
 
-  const fetchEasyshipRates = async (order: OrderWithItems) => {
+  const fetchSSRates = async (order: OrderWithItems) => {
     setLoadingRates(true);
     setRatesError(null);
-    setEasyshipRates([]);
+    setSsRates([]);
     try {
-      // Parse address: "123 Main St, New York, NY 10001, US"
+      // Parse address from the end: [..., "City", "STATE ZIP", "COUNTRY"]
       const parts = (order.shipping_address ?? '').split(', ');
-      const address = parts[0] ?? '';
-      const cityStateZip = parts[2] ?? '';
-      const [city, stateZip] = cityStateZip.split(', ');
-      const [state, zip] = (stateZip ?? '').split(' ');
-      const country = parts[3] ?? 'US';
+      const country = parts[parts.length - 1] ?? 'US';
+      const stateZip = parts[parts.length - 2] ?? '';
+      const [state, zip] = stateZip.split(' ');
+      const city = parts[parts.length - 3] ?? '';
 
-      const items = order.order_items.map((item) => ({
-        description: item.product?.name ?? 'Pokemon Card',
-        quantity: item.quantity,
-        value: item.price,
-      }));
-
-      const { res, data } = await callEasyship({
+      const { res, data } = await callShipStation({
         action: 'rates',
-        destination_country_alpha2: country.length === 2 ? country : 'US',
-        destination_city: city ?? '',
-        destination_state: state ?? '',
-        destination_postal_code: zip ?? '',
-        items,
+        toCity: city,
+        toState: state ?? '',
+        toPostalCode: zip ?? '',
+        toCountry: country.length === 2 ? country : 'US',
+        items: order.order_items.map((i) => ({ quantity: i.quantity })),
       });
 
       if (!res.ok || data.error) {
         setRatesError(data.error ?? 'Failed to fetch rates');
       } else {
-        setEasyshipRates(data.rates ?? []);
+        setSsRates(data.rates ?? []);
       }
     } catch (err: any) {
       setRatesError(err.message);
@@ -184,55 +175,48 @@ export default function AdminOrders() {
     }
   };
 
-  const createEasyshipShipment = async (order: OrderWithItems, rate: EasyShipRate) => {
-    setCreatingShipment(rate.courier_service_id);
+  const createSSLabel = async (order: OrderWithItems, rate: SSRate) => {
+    setCreatingLabel(`${rate.carrierCode}-${rate.serviceCode}`);
     setShipmentMsg(null);
     try {
       const parts = (order.shipping_address ?? '').split(', ');
-      const address = parts[0] ?? '';
-      const cityStateZip = parts[2] ?? '';
-      const [city, stateZip] = cityStateZip.split(', ');
-      const [state, zip] = (stateZip ?? '').split(' ');
-      const country = parts[3] ?? 'US';
+      const country = parts[parts.length - 1] ?? 'US';
+      const stateZip = parts[parts.length - 2] ?? '';
+      const [state, zip] = stateZip.split(' ');
+      const city = parts[parts.length - 3] ?? '';
+      const street1 = parts.slice(0, parts.length - 3).join(', ');
 
-      const items = order.order_items.map((item) => ({
-        description: item.product?.name ?? 'Pokemon Card',
-        quantity: item.quantity,
-        value: item.price,
-      }));
-
-      const { res, data } = await callEasyship({
-        action: 'create_shipment',
+      const { res, data } = await callShipStation({
+        action: 'create_label',
         order_id: order.id,
-        destination_name: 'Customer',
-        destination_address: address,
-        destination_city: city ?? '',
-        destination_state: state ?? '',
-        destination_postal_code: zip ?? '',
-        destination_country_alpha2: country.length === 2 ? country : 'US',
-        courier_service_id: rate.courier_service_id,
-        items,
+        carrierCode: rate.carrierCode,
+        serviceCode: rate.serviceCode,
+        toStreet1: street1,
+        toCity: city,
+        toState: state ?? '',
+        toPostalCode: zip ?? '',
+        toCountry: country.length === 2 ? country : 'US',
+        items: order.order_items.map((i) => ({ quantity: i.quantity })),
       });
 
       if (!res.ok || data.error) {
-        setShipmentMsg({ type: 'error', text: data.error ?? 'Failed to create shipment' });
+        setShipmentMsg({ type: 'error', text: data.error ?? 'Failed to create label' });
       } else {
-        const trackNum = data.shipment?.tracking_number ?? data.shipment?.easyship_shipment_id ?? '';
-        const carrier = data.shipment?.selected_courier?.name ?? rate.courier_name;
+        const trackNum = data.label?.trackingNumber ?? '';
         setTrackingNum(trackNum);
-        setTrackingCarrier(carrier);
-        setShipmentMsg({ type: 'success', text: `Shipment created via ${carrier}! Tracking auto-filled below.` });
-        setEasyshipOpen(false);
+        setTrackingCarrier(rate.carrierCode);
+        setShipmentMsg({ type: 'success', text: `Label created via ${rate.serviceName}! Tracking auto-filled below.` });
+        setSsOpen(false);
         await fetchOrders();
         setSelectedOrder((prev) => prev
-          ? { ...prev, tracking_number: trackNum, tracking_carrier: carrier }
+          ? { ...prev, tracking_number: trackNum, tracking_carrier: rate.carrierCode }
           : null
         );
       }
     } catch (err: any) {
       setShipmentMsg({ type: 'error', text: err.message });
     } finally {
-      setCreatingShipment(null);
+      setCreatingLabel(null);
     }
   };
 
@@ -426,13 +410,13 @@ export default function AdminOrders() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => {
-                    setEasyshipOpen((v) => !v);
-                    if (!easyshipOpen) fetchEasyshipRates(selectedOrder);
+                    setSsOpen((v) => !v);
+                    if (!ssOpen) fetchSSRates(selectedOrder);
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 border border-gray-200 hover:bg-gray-200 rounded-lg transition-colors"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  EasyShip
+                  ShipStation
                 </button>
                 {isRefundable(selectedOrder) && (
                   <button
@@ -524,14 +508,14 @@ export default function AdminOrders() {
 
               <div className="border-t border-gray-100" />
 
-              {/* EasyShip panel */}
-              {easyshipOpen && (
-                <div className="px-6 py-4 space-y-3 bg-blue-50/50">
+              {/* ShipStation panel */}
+              {ssOpen && (
+                <div className="px-6 py-4 space-y-3 bg-gray-50/80">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5" />EasyShip Rates
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5" />ShipStation Rates
                     </p>
-                    <button onClick={() => setEasyshipOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                    <button onClick={() => setSsOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
                   </div>
 
                   {shipmentMsg && (
@@ -543,8 +527,8 @@ export default function AdminOrders() {
 
                   {loadingRates && (
                     <div className="flex items-center justify-center py-6">
-                      <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-                      <span className="ml-2 text-sm text-blue-600">Fetching live rates...</span>
+                      <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
+                      <span className="ml-2 text-sm text-gray-600">Fetching live rates...</span>
                     </div>
                   )}
 
@@ -554,36 +538,42 @@ export default function AdminOrders() {
                       <div>
                         <p className="font-semibold">Could not fetch rates</p>
                         <p className="mt-0.5 text-red-600">{ratesError}</p>
-                        <p className="mt-1 text-gray-500">Make sure EASYSHIP_API_KEY is set in Supabase edge function secrets.</p>
                       </div>
                     </div>
                   )}
 
-                  {!loadingRates && !ratesError && easyshipRates.length > 0 && (
+                  {!loadingRates && !ratesError && ssRates.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs text-blue-600 font-medium">Select a carrier to create shipment:</p>
-                      {easyshipRates.slice(0, 6).map((rate) => (
-                        <button
-                          key={rate.courier_service_id}
-                          onClick={() => createEasyshipShipment(selectedOrder, rate)}
-                          disabled={!!creatingShipment}
-                          className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-blue-100 hover:border-blue-300 hover:bg-blue-50/50 transition-all text-left disabled:opacity-60"
-                        >
-                          <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                            {creatingShipment === rate.courier_service_id
-                              ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                              : <Truck className="w-4 h-4 text-blue-500" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-gray-900 truncate">{rate.courier_name}</p>
-                            <p className="text-[10px] text-gray-500">{rate.service_name} · {rate.min_delivery_time}–{rate.max_delivery_time} days</p>
-                          </div>
-                          <span className="text-sm font-bold text-gray-900 flex-shrink-0">
-                            {rate.currency} {Number(rate.total_charge).toFixed(2)}
-                          </span>
-                        </button>
-                      ))}
+                      <p className="text-xs text-gray-500 font-medium">Select a service to create label:</p>
+                      {ssRates.slice(0, 8).map((rate) => {
+                        const key = `${rate.carrierCode}-${rate.serviceCode}`;
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => createSSLabel(selectedOrder, rate)}
+                            disabled={!!creatingLabel}
+                            className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-all text-left disabled:opacity-60"
+                          >
+                            <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                              {creatingLabel === key
+                                ? <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                                : <Truck className="w-4 h-4 text-gray-500" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-gray-900 truncate">{rate.serviceName}</p>
+                              <p className="text-[10px] text-gray-500 uppercase">{rate.carrierCode}</p>
+                            </div>
+                            <span className="text-sm font-bold text-gray-900 flex-shrink-0">
+                              ${(rate.shipmentCost + rate.otherCost).toFixed(2)}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
+                  )}
+
+                  {!loadingRates && !ratesError && ssRates.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-4">No rates returned. Check origin/destination addresses.</p>
                   )}
                 </div>
               )}
