@@ -969,6 +969,3 @@ export default function AdminSupport() {
     </div>
   );
 }
-
-
-export default AdminSupport
