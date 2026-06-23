@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Layers, Mail, Lock, User, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Layers, Mail, Lock, User, AlertCircle, CheckCircle, ArrowLeft, KeyRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -7,19 +7,72 @@ interface AuthPageProps {
   onNavigate: (page: string) => void;
 }
 
-type Mode = 'signin' | 'signup' | 'forgot';
+type Mode = 'signin' | 'signup' | 'forgot' | 'set-password';
+
+function detectModeFromHash(): Mode {
+  const hash = window.location.hash;
+  if (hash.includes('type=invite') || hash.includes('type=recovery')) return 'set-password';
+  return 'signin';
+}
 
 export default function AuthPage({ onNavigate }: AuthPageProps) {
   const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<Mode>('signin');
+  const [mode, setMode] = useState<Mode>(detectModeFromHash);
+  const isInvite = window.location.hash.includes('type=invite');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const reset = () => { setError(null); setSuccess(null); };
+
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    reset();
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const updateData: { password: string; data?: { full_name: string } } = { password };
+      if (isInvite && fullName.trim()) {
+        updateData.data = { full_name: fullName.trim() };
+      }
+      const { error: updateErr } = await supabase.auth.updateUser(updateData);
+      if (updateErr) { setError(updateErr.message); return; }
+
+      // Update profile name if provided
+      if (isInvite && fullName.trim()) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from('profiles')
+            .update({ full_name: fullName.trim() })
+            .eq('id', user.id);
+        }
+      }
+
+      // Clear the hash so a refresh doesn't re-trigger this mode
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+
+      setSuccess(isInvite
+        ? 'Password set! Your account is ready. Redirecting...'
+        : 'Password updated successfully. Redirecting...'
+      );
+      setTimeout(() => onNavigate('home'), 1500);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +81,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
 
     if (mode === 'forgot') {
       const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/?reset=true',
+        redirectTo: window.location.origin + '/auth?reset=1',
       });
       setSubmitting(false);
       if (err) {
@@ -48,6 +101,13 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
     }
     setSubmitting(false);
   };
+
+  const modeTitle = {
+    signin: 'Welcome back, collector',
+    signup: 'Create your collector account',
+    forgot: 'Reset your password',
+    'set-password': isInvite ? "You've been invited!" : 'Set a new password',
+  }[mode];
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4 relative overflow-hidden">
@@ -77,19 +137,13 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
             </div>
           </button>
 
-          <p className="text-gray-500 mt-4 text-sm">
-            {mode === 'signup'
-              ? 'Create your collector account'
-              : mode === 'forgot'
-              ? 'Reset your password'
-              : 'Welcome back, collector'}
-          </p>
+          <p className="text-gray-500 mt-4 text-sm">{modeTitle}</p>
         </div>
 
         {/* Card */}
         <div className="bg-gray-900 rounded-2xl border border-white/10 shadow-2xl p-8">
 
-          {mode === 'forgot' && (
+          {(mode === 'forgot' || mode === 'set-password') && !success && (
             <button
               onClick={() => { setMode('signin'); reset(); }}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 mb-6 transition-colors"
@@ -113,59 +167,34 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'signup' && (
+          {/* Set Password form (invite or recovery) */}
+          {mode === 'set-password' && !success && (
+            <form onSubmit={handleSetPassword} className="space-y-4">
+              {isInvite && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-5 leading-relaxed">
+                    Your account has been created. Set your name and a password to get started.
+                  </p>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                      placeholder="Your name"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Full Name
+                  {isInvite ? 'Choose a Password' : 'New Password'}
                 </label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
-                    placeholder="John Doe"
-                    required
-                  />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
-                  placeholder="you@example.com"
-                  required
-                />
-              </div>
-            </div>
-
-            {mode !== 'forgot' && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Password
-                  </label>
-                  {mode === 'signin' && (
-                    <button
-                      type="button"
-                      onClick={() => { setMode('forgot'); reset(); }}
-                      className="text-[11px] text-red-400/80 hover:text-red-400 transition-colors font-medium"
-                    >
-                      Forgot password?
-                    </button>
-                  )}
-                </div>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                   <input
@@ -179,30 +208,128 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                   />
                 </div>
               </div>
-            )}
 
-            {mode === 'forgot' && (
-              <p className="text-xs text-gray-500 leading-relaxed">
-                Enter the email address associated with your account and we'll send you a link to reset your password.
-              </p>
-            )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                    placeholder="Repeat password"
+                    required
+                    minLength={6}
+                  />
+                </div>
+              </div>
 
-            <button
-              type="submit"
-              disabled={submitting || (!!success && mode === 'forgot')}
-              className="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-red-900/30 mt-2"
-            >
-              {submitting
-                ? 'Please wait...'
-                : mode === 'signup'
-                ? 'Create Account'
-                : mode === 'forgot'
-                ? 'Send Reset Link'
-                : 'Sign In'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-red-900/30 mt-2"
+              >
+                {submitting ? 'Saving...' : isInvite ? 'Set Password & Continue' : 'Update Password'}
+              </button>
+            </form>
+          )}
 
-          {mode !== 'forgot' && (
+          {/* Normal sign in / sign up / forgot forms */}
+          {mode !== 'set-password' && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {mode === 'signup' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                      placeholder="John Doe"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                    placeholder="you@example.com"
+                    required
+                  />
+                </div>
+              </div>
+
+              {mode !== 'forgot' && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      Password
+                    </label>
+                    {mode === 'signin' && (
+                      <button
+                        type="button"
+                        onClick={() => { setMode('forgot'); reset(); }}
+                        className="text-[11px] text-red-400/80 hover:text-red-400 transition-colors font-medium"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                      placeholder="Min. 6 characters"
+                      required
+                      minLength={6}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {mode === 'forgot' && (
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Enter the email address associated with your account and we'll send you a link to reset your password.
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={submitting || (!!success && mode === 'forgot')}
+                className="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-red-900/30 mt-2"
+              >
+                {submitting
+                  ? 'Please wait...'
+                  : mode === 'signup'
+                  ? 'Create Account'
+                  : mode === 'forgot'
+                  ? 'Send Reset Link'
+                  : 'Sign In'}
+              </button>
+            </form>
+          )}
+
+          {(mode === 'signin' || mode === 'signup') && (
             <div className="mt-6 pt-6 border-t border-white/10 text-center">
               <button
                 onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); reset(); }}

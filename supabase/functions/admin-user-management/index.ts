@@ -132,6 +132,32 @@ Deno.serve(async (req: Request) => {
       return respond({ action: "invited", email: normalizedEmail, emailSent: true });
     }
 
+    // ── Resend staff invite email ────────────────────────────────────────────
+    if (action === "resend-invite") {
+      const { invite_id } = body;
+      if (!invite_id) return respond({ error: "invite_id required" }, 400);
+
+      const { data: invitation, error: fetchErr } = await supabase
+        .from("staff_invitations")
+        .select("email, role")
+        .eq("id", invite_id)
+        .eq("status", "pending")
+        .single();
+
+      if (fetchErr || !invitation) return respond({ error: "Pending invitation not found" }, 404);
+
+      const { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(invitation.email, {
+        data: { invited_role: invitation.role },
+        redirectTo: `${Deno.env.get("SITE_URL") ?? ""}/auth?invited=1`,
+      });
+
+      if (inviteErr) {
+        return respond({ error: inviteErr.message }, 500);
+      }
+
+      return respond({ success: true, email: invitation.email });
+    }
+
     // ── Update customer ──────────────────────────────────────────────────────
     if (action === "update") {
       const { user_id, full_name, email } = body;

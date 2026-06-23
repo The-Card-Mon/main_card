@@ -25,13 +25,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string, userEmail?: string) => {
     const { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
-    if (data) setProfile(data as Profile);
+    if (data) {
+      setProfile(data as Profile);
+      return;
+    }
+    // No profile yet — this happens for users who signed up via invite link.
+    // Insert a basic profile; the apply_pending_staff_invitation trigger will
+    // automatically set the correct role and mark the invitation as accepted.
+    if (userEmail) {
+      const { data: created } = await supabase
+        .from('profiles')
+        .insert({ id: userId, email: userEmail, role: 'customer' })
+        .select()
+        .single();
+      if (created) setProfile(created as Profile);
+    }
   }, []);
 
   useEffect(() => {
@@ -40,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           if (session?.user) {
             setUser({ id: session.user.id, email: session.user.email ?? '' });
-            await fetchProfile(session.user.id);
+            await fetchProfile(session.user.id, session.user.email ?? undefined);
           } else {
             setUser(null);
             setProfile(null);

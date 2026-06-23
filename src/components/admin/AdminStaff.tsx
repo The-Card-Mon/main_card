@@ -15,6 +15,7 @@ import {
   Loader2,
   Search,
   Ban,
+  RefreshCw,
 } from 'lucide-react';
 
 interface StaffProfile {
@@ -55,6 +56,8 @@ export default function AdminStaff() {
   const [changingRole, setChangingRole] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [cancellingInvite, setCancellingInvite] = useState<string | null>(null);
+  const [resendingInvite, setResendingInvite] = useState<string | null>(null);
+  const [resendMsg, setResendMsg] = useState<Record<string, string>>({});
 
   const [openRoleMenu, setOpenRoleMenu] = useState<string | null>(null);
 
@@ -144,6 +147,24 @@ export default function AdminStaff() {
       alert((e as Error).message);
     } finally {
       setCancellingInvite(null);
+    }
+  };
+
+  const handleResendInvite = async (inviteId: string, inviteEmail: string) => {
+    setResendingInvite(inviteId);
+    setResendMsg((prev) => ({ ...prev, [inviteId]: '' }));
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-user-management', {
+        body: { action: 'resend-invite', invite_id: inviteId },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      setResendMsg((prev) => ({ ...prev, [inviteId]: `Invite resent to ${inviteEmail}` }));
+      setTimeout(() => setResendMsg((prev) => { const n = { ...prev }; delete n[inviteId]; return n; }), 4000);
+    } catch (e) {
+      setResendMsg((prev) => ({ ...prev, [inviteId]: `Error: ${(e as Error).message}` }));
+    } finally {
+      setResendingInvite(null);
     }
   };
 
@@ -357,36 +378,58 @@ export default function AdminStaff() {
           </div>
           <div className="divide-y divide-gray-50">
             {invitations.map((inv) => (
-              <div key={inv.id} className="flex items-center gap-4 px-5 py-3.5">
-                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                  <Mail className="w-4 h-4 text-amber-600" />
+              <div key={inv.id} className="px-5 py-3.5">
+                <div className="flex items-center gap-4">
+                  <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <Mail className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{inv.email}</p>
+                    <p className="text-xs text-gray-400">
+                      Invited {new Date(inv.created_at).toLocaleDateString()}
+                      {inv.invited_by_email && ` · by ${inv.invited_by_email}`}
+                    </p>
+                  </div>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                    inv.role === 'admin'
+                      ? 'bg-red-50 text-red-700 border-red-200'
+                      : 'bg-blue-50 text-blue-700 border-blue-200'
+                  }`}>
+                    {inv.role.charAt(0).toUpperCase() + inv.role.slice(1)}
+                  </span>
+                  <button
+                    onClick={() => handleResendInvite(inv.id, inv.email)}
+                    disabled={resendingInvite === inv.id}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors disabled:opacity-50"
+                    title="Resend invite email"
+                  >
+                    {resendingInvite === inv.id
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <RefreshCw className="w-3 h-3" />}
+                    Resend
+                  </button>
+                  <button
+                    onClick={() => handleCancelInvite(inv.id)}
+                    disabled={cancellingInvite === inv.id}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    title="Cancel invitation"
+                  >
+                    {cancellingInvite === inv.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <X className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{inv.email}</p>
-                  <p className="text-xs text-gray-400">
-                    Invited {new Date(inv.created_at).toLocaleDateString()}
-                    {inv.invited_by_email && ` · by ${inv.invited_by_email}`}
+                {resendMsg[inv.id] && (
+                  <p className={`mt-2 text-xs px-2 py-1 rounded ${
+                    resendMsg[inv.id].startsWith('Error')
+                      ? 'text-red-600 bg-red-50'
+                      : 'text-green-700 bg-green-50'
+                  }`}>
+                    {resendMsg[inv.id]}
                   </p>
-                </div>
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                  inv.role === 'admin'
-                    ? 'bg-red-50 text-red-700 border-red-200'
-                    : 'bg-blue-50 text-blue-700 border-blue-200'
-                }`}>
-                  {inv.role.charAt(0).toUpperCase() + inv.role.slice(1)}
-                </span>
-                <button
-                  onClick={() => handleCancelInvite(inv.id)}
-                  disabled={cancellingInvite === inv.id}
-                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                  title="Cancel invitation"
-                >
-                  {cancellingInvite === inv.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <X className="w-4 h-4" />
-                  )}
-                </button>
+                )}
               </div>
             ))}
           </div>

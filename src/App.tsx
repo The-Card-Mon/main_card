@@ -30,7 +30,12 @@ interface MaintenanceState {
 }
 
 function AppContent() {
-  const [currentPage, setCurrentPage] = useState('home');
+  const [currentPage, setCurrentPage] = useState(() => {
+    // Route invite/password-recovery links to the auth page immediately
+    const hash = window.location.hash;
+    if (hash.includes('type=invite') || hash.includes('type=recovery')) return 'auth';
+    return 'home';
+  });
   const [productId, setProductId] = useState<string | null>(null);
   const [catalogType, setCatalogType] = useState<string>('');
   const { isAdmin, isStaff, loading, user } = useAuth();
