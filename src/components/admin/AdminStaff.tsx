@@ -16,6 +16,7 @@ import {
   Search,
   Ban,
   RefreshCw,
+  Pencil,
 } from 'lucide-react';
 
 interface StaffProfile {
@@ -60,6 +61,13 @@ export default function AdminStaff() {
   const [resendMsg, setResendMsg] = useState<Record<string, string>>({});
 
   const [openRoleMenu, setOpenRoleMenu] = useState<string | null>(null);
+
+  // Edit member state
+  const [editMember, setEditMember] = useState<StaffProfile | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -196,6 +204,38 @@ export default function AdminStaff() {
     }
   };
 
+  const openEdit = (member: StaffProfile) => {
+    setEditMember(member);
+    setEditName(member.full_name ?? '');
+    setEditEmail(member.email);
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editMember) return;
+    setSaving(true);
+    setEditError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-user-management', {
+        body: {
+          action: 'update',
+          user_id: editMember.id,
+          full_name: editName.trim() || null,
+          email: editEmail.trim().toLowerCase(),
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      setEditMember(null);
+      await fetchData();
+    } catch (e) {
+      setEditError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const adminCount = staff.filter((s) => s.role === 'admin').length;
   const staffCount = staff.filter((s) => s.role === 'staff').length;
 
@@ -309,6 +349,15 @@ export default function AdminStaff() {
                   {/* Actions */}
                   {!isSelf ? (
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Edit */}
+                      <button
+                        onClick={() => openEdit(member)}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit details"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+
                       {/* Role switcher */}
                       <div className="relative">
                         <button
@@ -542,6 +591,73 @@ export default function AdminStaff() {
                 </ul>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Edit Member Modal */}
+      {editMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditMember(null)} />
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Edit Staff Member</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{editMember.email}</p>
+              </div>
+              <button onClick={() => setEditMember(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Full Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Full name"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  required
+                  placeholder="email@example.com"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">Changing the email updates both their login and profile.</p>
+              </div>
+
+              {editError && (
+                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  {editError}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditMember(null)}
+                  className="flex-1 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || !editEmail.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
