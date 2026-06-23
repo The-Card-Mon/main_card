@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
   );
 
   try {
-    // Verify caller is admin
+    // Verify caller is admin using their JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return respond({ error: "Unauthorized" }, 401);
 
@@ -33,7 +33,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, email")
       .eq("id", caller.id)
       .single();
 
@@ -55,7 +55,6 @@ Deno.serve(async (req: Request) => {
       });
       if (createErr || !authUser.user) return respond({ error: createErr?.message ?? "Failed to create user" }, 500);
 
-      // Upsert profile
       await supabase.from("profiles").upsert({
         id: authUser.user.id,
         email,
@@ -72,23 +71,25 @@ Deno.serve(async (req: Request) => {
       if (!email) return respond({ error: "email is required" }, 400);
       if (!["admin", "staff"].includes(role)) return respond({ error: "role must be admin or staff" }, 400);
 
-      // Check if user already exists — promote them directly instead
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // Check if user already has an account — promote them directly
       const { data: existingProfile } = await supabase
         .from("profiles")
         .select("id, email, full_name, role")
-        .ilike("email", email.trim())
+        .ilike("email", normalizedEmail)
         .maybeSingle();
 
       if (existingProfile) {
         if (existingProfile.id === caller.id) {
           return respond({ error: "Cannot change your own role" }, 400);
         }
-        // Promote immediately via DB RPC
-        const { error: rpcErr } = await supabase.rpc("admin_set_user_role", {
-          p_user_id: existingProfile.id,
-          p_role: role,
-        });
-        if (rpcErr) return respond({ error: rpcErr.message }, 500);
+        // Service role can update directly without RLS/auth.uid() check
+        const { error: updateErr } = await supabase
+          .from("profiles")
+          .update({ role })
+          .eq("id", existingProfile.id);
+        if (updateErr) return respond({ error: updateErr.message }, 500);
         return respond({
           action: "promoted",
           email: existingProfile.email,
@@ -96,38 +97,39 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // No existing account — record pending invitation and send Supabase invite email
-      const { error: rpcErr } = await supabase.rpc("admin_invite_staff", {
-        p_email: email.trim().toLowerCase(),
-        p_role: role,
-      });
-      if (rpcErr) return respond({ error: rpcErr.message }, 500);
+      // No existing account — cancel any existing pending invite then create a new one
+      await supabase
+        .from("staff_invitations")
+        .update({ status: "cancelled" })
+        .ilike("email", normalizedEmail)
+        .eq("status", "pending");
 
-      // Send invite email through Supabase Auth (creates account on first sign-in)
-      const { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(
-        email.trim().toLowerCase(),
-        {
-          data: { invited_role: role },
-          redirectTo: `${Deno.env.get("SITE_URL") ?? ""}/auth?invited=1`,
-        },
-      );
+      const { error: insertErr } = await supabase.from("staff_invitations").insert({
+        email: normalizedEmail,
+        role,
+        invited_by: caller.id,
+        invited_by_email: callerProfile.email,
+        status: "pending",
+      });
+      if (insertErr) return respond({ error: insertErr.message }, 500);
+
+      // Send invite email through Supabase Auth
+      const { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(normalizedEmail, {
+        data: { invited_role: role },
+        redirectTo: `${Deno.env.get("SITE_URL") ?? ""}/auth?invited=1`,
+      });
 
       if (inviteErr) {
-        // Log but don't fail — the DB invitation record was already created
         console.error("Failed to send invite email:", inviteErr.message);
         return respond({
           action: "invited",
-          email: email.trim().toLowerCase(),
+          email: normalizedEmail,
           emailSent: false,
           emailError: inviteErr.message,
         });
       }
 
-      return respond({
-        action: "invited",
-        email: email.trim().toLowerCase(),
-        emailSent: true,
-      });
+      return respond({ action: "invited", email: normalizedEmail, emailSent: true });
     }
 
     // ── Update customer ──────────────────────────────────────────────────────
