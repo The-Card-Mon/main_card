@@ -204,7 +204,13 @@ Deno.serve(async (req: Request) => {
       };
 
       const { ok, data } = await ssFetch("/shipments/createlabel", "POST", body);
-      if (!ok) return respond({ error: (data as { message?: string })?.message ?? "Failed to create label", details: data }, 502);
+      if (!ok) {
+        const d = data as Record<string, unknown>;
+        const errMsg = (d["Message"] as string) || (d["message"] as string) || (d["ExceptionMessage"] as string) || "Failed to create label";
+        const modelState = d["ModelState"] as Record<string, string[]> | undefined;
+        const validationErrors = modelState ? Object.entries(modelState).map(([k, v]) => `${k}: ${v.join(", ")}`).join("; ") : undefined;
+        return respond({ error: validationErrors ? `${errMsg} — ${validationErrors}` : errMsg, details: data }, 502);
+      }
 
       if (order_id && (data as { trackingNumber?: string })?.trackingNumber) {
         await supabase.from("orders").update({
