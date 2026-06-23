@@ -266,7 +266,8 @@ export default function SellPage({ onNavigate }: { onNavigate: (page: string) =>
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Submission Received!</h3>
               <p className="text-gray-500 max-w-sm mx-auto mb-6">
-                We'll review your submission and get back to you at <strong>{contactEmail}</strong> within 1–2 business days.
+                We'll review your submission and get back to you at <strong>{contactEmail}</strong> within 1–2 business days. You can also reach us at{' '}
+                <a href="mailto:support@thecardmon.com" className="text-red-600 hover:underline">support@thecardmon.com</a>.
               </p>
               <button
                 onClick={resetForm}
@@ -482,7 +483,12 @@ export default function SellPage({ onNavigate }: { onNavigate: (page: string) =>
 
               {/* Contact info */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Contact Information</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700">Contact Information</h3>
+                  <a href="mailto:support@thecardmon.com" className="text-xs text-red-600 hover:text-red-700 transition-colors">
+                    support@thecardmon.com
+                  </a>
+                </div>
                 <div className="grid sm:grid-cols-3 gap-4">
                   <div>
                     <label className="text-xs font-medium text-gray-600 mb-1 block">Full Name *</label>
