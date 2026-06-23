@@ -2,6 +2,13 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../types';
 
+// Captured before Supabase processes and clears the URL hash
+const _initialHash = typeof window !== 'undefined' ? window.location.hash : '';
+
+function isPasswordSetupHash(hash: string) {
+  return hash.includes('type=recovery') || hash.includes('type=invite');
+}
+
 export interface User {
   id: string;
   email: string;
@@ -58,11 +65,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (session?.user) {
             setUser({ id: session.user.id, email: session.user.email ?? '' });
             await fetchProfile(session.user.id, session.user.email ?? undefined);
-            // PASSWORD_RECOVERY fires when a reset/recovery link is clicked.
-            // SIGNED_IN with type=invite in the hash means the user arrived via invite.
+            // PASSWORD_RECOVERY fires when the listener is registered in time.
+            // INITIAL_SESSION fires when the token exchange already completed before
+            // the listener was registered (hash was already cleared by Supabase).
+            // In both cases we rely on _initialHash which was captured at module load.
             if (
               event === 'PASSWORD_RECOVERY' ||
-              (event === 'SIGNED_IN' && window.location.hash.includes('type=invite'))
+              (event === 'SIGNED_IN' && _initialHash.includes('type=invite')) ||
+              (event === 'INITIAL_SESSION' && isPasswordSetupHash(_initialHash))
             ) {
               setNeedsPasswordSetup(true);
             }

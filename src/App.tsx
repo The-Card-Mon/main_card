@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
+
+// Capture hash at module load before Supabase may clear it
+const _startHash = typeof window !== 'undefined' ? window.location.hash : '';
 import Header from './components/Header';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
@@ -32,8 +35,7 @@ interface MaintenanceState {
 function AppContent() {
   const [currentPage, setCurrentPage] = useState(() => {
     // Route invite/password-recovery links to the auth page immediately
-    const hash = window.location.hash;
-    if (hash.includes('type=invite') || hash.includes('type=recovery')) return 'auth';
+    if (_startHash.includes('type=invite') || _startHash.includes('type=recovery')) return 'auth';
     return 'home';
   });
   const [productId, setProductId] = useState<string | null>(null);
