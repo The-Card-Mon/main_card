@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Layers, Mail, Lock, User, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, User, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -195,19 +195,13 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
         <div className="text-center mb-8">
           <button
             onClick={() => onNavigate('home')}
-            className="inline-flex flex-col items-center gap-3 group"
+            className="inline-flex flex-col items-center group"
           >
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center shadow-2xl shadow-red-900/50 group-hover:shadow-red-700/60 transition-shadow">
-              <Layers className="w-7 h-7 text-white" strokeWidth={2.5} />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white tracking-wide" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
-                The Card Mon
-              </div>
-              <div className="text-[10px] text-amber-400/70 tracking-[0.2em] uppercase font-semibold">
-                Premium TCG
-              </div>
-            </div>
+            <img
+              src="/assets/branding/gpt-image-2_creating_a_logo_for_a_business_named_The_Card_Mon_a_trading_card_selling_company-0.jpg"
+              alt="The Card Mon"
+              className="h-24 w-auto rounded-xl object-contain group-hover:opacity-90 transition-opacity"
+            />
           </button>
 
           <p className="text-gray-500 mt-4 text-sm">

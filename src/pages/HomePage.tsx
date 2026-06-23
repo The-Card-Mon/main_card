@@ -69,6 +69,15 @@ export default function HomePage({ onNavigate, onViewProduct }: HomePageProps) {
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 sm:py-32">
           <div className="max-w-3xl">
+            {/* Logo */}
+            <div className="mb-8">
+              <img
+                src="/assets/branding/gpt-image-2_creating_a_logo_for_a_business_named_The_Card_Mon_a_trading_card_selling_company-0.jpg"
+                alt="The Card Mon"
+                className="h-28 sm:h-36 w-auto rounded-2xl object-contain"
+              />
+            </div>
+
             {/* Eyebrow badge */}
             <div className="inline-flex items-center gap-2 bg-amber-400/10 border border-amber-400/25 rounded-full px-4 py-1.5 mb-7">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />

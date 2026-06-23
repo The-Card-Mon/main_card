@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  ShoppingCart, User, LogOut, Shield, Menu, X, Layers, DollarSign,
+  ShoppingCart, User, LogOut, Shield, Menu, X, DollarSign,
   ChevronDown, HelpCircle, Truck, Info, MessageSquare, Settings,
   Package, Sparkles, Tag,
 } from 'lucide-react';
@@ -82,18 +82,12 @@ export default function Header({ currentPage, onNavigate }: HeaderProps) {
         <div className="flex items-center justify-between py-3">
 
           {/* Logo */}
-          <button onClick={() => nav('home')} className="flex items-center gap-3 group flex-shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center shadow-lg shadow-red-900/50 group-hover:shadow-red-700/60 transition-shadow">
-              <Layers className="w-5 h-5 text-white" strokeWidth={2.5} />
-            </div>
-            <div className="leading-none">
-              <div className="text-xl font-bold tracking-wide text-white" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
-                The Card Mon
-              </div>
-              <div className="text-[9px] text-amber-400/80 tracking-[0.2em] uppercase font-semibold">
-                Premium TCG
-              </div>
-            </div>
+          <button onClick={() => nav('home')} className="flex items-center flex-shrink-0 group">
+            <img
+              src="/assets/branding/gpt-image-2_creating_a_logo_for_a_business_named_The_Card_Mon_a_trading_card_selling_company-0.jpg"
+              alt="The Card Mon"
+              className="h-11 w-auto rounded-lg object-contain group-hover:opacity-90 transition-opacity"
+            />
           </button>
 
           {/* Desktop nav */}

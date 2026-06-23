@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import {
   LayoutDashboard, Package, ShoppingBag, Users, Settings, ChevronRight,
-  Flame, ExternalLink, Menu, X, ArrowDownToLine, Megaphone, Share2,
+  ExternalLink, Menu, X, ArrowDownToLine, Megaphone, Share2,
   Coins, UserCog, Shield, TrendingUp, Truck, Tag, Headphones,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -99,9 +99,13 @@ export default function AdminLayout({ children, activeSection, onSection, onGoTo
 
   const Sidebar = () => (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-800">
-        <Flame className="w-6 h-6 text-red-500 flex-shrink-0" />
-        <span className="font-bold text-white text-lg">The Card Mon</span>
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-800">
+        <img
+          src="/assets/branding/gpt-image-2_creating_a_logo_for_a_business_named_The_Card_Mon_a_trading_card_selling_company-0.jpg"
+          alt="The Card Mon"
+          className="h-9 w-9 rounded-lg object-cover flex-shrink-0"
+        />
+        <span className="font-bold text-white text-base leading-tight">The Card Mon</span>
         <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
           isAdmin
             ? 'bg-red-600/20 text-red-400 border-red-600/30'
