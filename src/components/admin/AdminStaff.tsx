@@ -153,13 +153,19 @@ export default function AdminStaff() {
     setInviting(true);
     setInviteMsg(null);
     try {
-      const { data, error } = await supabase.rpc('admin_invite_staff', {
-        p_email: inviteEmail.trim().toLowerCase(),
-        p_role: inviteRole,
+      const { data, error } = await supabase.functions.invoke('admin-user-management', {
+        body: { action: 'invite-staff', email: inviteEmail.trim(), role: inviteRole },
       });
-      if (error) throw error;
-      const result = typeof data === 'string' ? data : JSON.stringify(data);
-      setInviteMsg({ type: 'success', text: result || 'Done.' });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      if (data?.action === 'promoted') {
+        setInviteMsg({ type: 'success', text: `${data.email} already has an account and has been promoted to ${inviteRole}.` });
+      } else if (data?.emailSent) {
+        setInviteMsg({ type: 'success', text: `Invitation email sent to ${data.email}. They'll receive a link to set up their account.` });
+      } else {
+        setInviteMsg({ type: 'success', text: `Invitation recorded for ${data?.email ?? inviteEmail}. Note: invite email could not be sent (${data?.emailError ?? 'unknown reason'}) — they'll still be promoted automatically when they sign up.` });
+      }
       setInviteEmail('');
       await fetchData();
     } catch (e) {

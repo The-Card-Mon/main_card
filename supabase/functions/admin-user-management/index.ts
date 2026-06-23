@@ -66,6 +66,70 @@ Deno.serve(async (req: Request) => {
       return respond({ success: true, user_id: authUser.user.id });
     }
 
+    // ── Invite staff (sends email invite) ────────────────────────────────────
+    if (action === "invite-staff") {
+      const { email, role } = body;
+      if (!email) return respond({ error: "email is required" }, 400);
+      if (!["admin", "staff"].includes(role)) return respond({ error: "role must be admin or staff" }, 400);
+
+      // Check if user already exists — promote them directly instead
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, role")
+        .ilike("email", email.trim())
+        .maybeSingle();
+
+      if (existingProfile) {
+        if (existingProfile.id === caller.id) {
+          return respond({ error: "Cannot change your own role" }, 400);
+        }
+        // Promote immediately via DB RPC
+        const { error: rpcErr } = await supabase.rpc("admin_set_user_role", {
+          p_user_id: existingProfile.id,
+          p_role: role,
+        });
+        if (rpcErr) return respond({ error: rpcErr.message }, 500);
+        return respond({
+          action: "promoted",
+          email: existingProfile.email,
+          name: existingProfile.full_name,
+        });
+      }
+
+      // No existing account — record pending invitation and send Supabase invite email
+      const { error: rpcErr } = await supabase.rpc("admin_invite_staff", {
+        p_email: email.trim().toLowerCase(),
+        p_role: role,
+      });
+      if (rpcErr) return respond({ error: rpcErr.message }, 500);
+
+      // Send invite email through Supabase Auth (creates account on first sign-in)
+      const { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(
+        email.trim().toLowerCase(),
+        {
+          data: { invited_role: role },
+          redirectTo: `${Deno.env.get("SITE_URL") ?? ""}/auth?invited=1`,
+        },
+      );
+
+      if (inviteErr) {
+        // Log but don't fail — the DB invitation record was already created
+        console.error("Failed to send invite email:", inviteErr.message);
+        return respond({
+          action: "invited",
+          email: email.trim().toLowerCase(),
+          emailSent: false,
+          emailError: inviteErr.message,
+        });
+      }
+
+      return respond({
+        action: "invited",
+        email: email.trim().toLowerCase(),
+        emailSent: true,
+      });
+    }
+
     // ── Update customer ──────────────────────────────────────────────────────
     if (action === "update") {
       const { user_id, full_name, email } = body;

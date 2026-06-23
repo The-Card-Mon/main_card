@@ -762,23 +762,34 @@ export default function AdminSocial() {
           <div className="p-6 space-y-3 text-sm text-gray-600">
             <p>Add these secrets to Supabase (Project Settings → Edge Functions → Secrets):</p>
             {[
-              { name: 'FACEBOOK_PAGE_ACCESS_TOKEN', desc: 'Long-lived Page Access Token from your Facebook App' },
-              { name: 'FACEBOOK_PAGE_ID', desc: 'Your Facebook Page ID (found in Page Settings)' },
-              { name: 'INSTAGRAM_USER_ID', desc: 'Instagram Business Account ID linked to your Facebook Page' },
+              {
+                name: 'FACEBOOK_PAGE_ACCESS_TOKEN',
+                desc: 'Page Access Token (NOT a User Access Token). Generate it in Graph API Explorer: select your Page from the dropdown, add pages_manage_posts + pages_read_engagement permissions, then exchange for a long-lived token.',
+              },
+              { name: 'FACEBOOK_PAGE_ID', desc: 'Your Facebook Page numeric ID (found in Page Settings → About, or via Graph API Explorer)' },
+              { name: 'INSTAGRAM_USER_ID', desc: 'Instagram Business Account ID linked to your Facebook Page (optional, for Instagram posts)' },
             ].map(({ name, desc }) => (
               <div key={name} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
                 <code className="text-xs font-mono font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-100 whitespace-nowrap flex-shrink-0">{name}</code>
                 <span className="text-xs text-gray-500 pt-1">{desc}</span>
               </div>
             ))}
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-xs font-semibold text-red-700 mb-1">Common error: "publish_actions permission not available"</p>
+              <p className="text-xs text-red-600">
+                This means you used a <strong>User Access Token</strong> instead of a <strong>Page Access Token</strong>.
+                In Graph API Explorer, click the token dropdown, select <em>your Page</em> (not "User Token"), and
+                ensure <code className="bg-red-100 px-1 rounded">pages_manage_posts</code> is checked.
+              </p>
+            </div>
             <a
-              href="https://developers.facebook.com/docs/pages/getting-started"
+              href="https://developers.facebook.com/tools/explorer/"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 mt-2"
             >
               <ExternalLink className="w-3 h-3" />
-              Facebook for Developers — Get Started
+              Open Graph API Explorer
             </a>
           </div>
         </div>
