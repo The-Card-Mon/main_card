@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   Inbox, Search, RefreshCw, Plus, X, Send, Lock, MessageSquare,
-  ChevronDown, Clock, CheckCircle, AlertTriangle, Loader2, User,
-  Filter, Tag, UserCheck, Circle,
+  Loader2, Filter, UserCheck, Settings, Mail, Copy, CheckCircle2,
+  ExternalLink, Zap,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -105,6 +105,187 @@ function StatusBadge({ status }: { status: TicketStatus }) {
 function PriorityDot({ priority }: { priority: TicketPriority }) {
   const cfg = PRIORITY_CFG[priority];
   return <span className={`text-[10px] font-bold uppercase tracking-wide ${cfg.color}`}>{cfg.label}</span>;
+}
+
+// ─── Email Setup Modal ────────────────────────────────────────────────────────
+
+const WEBHOOK_URL = 'https://muzrllgnyzwbtcyqybwy.supabase.co/functions/v1/inbound-email';
+
+const PROVIDERS = [
+  {
+    name: 'Postmark',
+    color: 'text-yellow-700',
+    bg: 'bg-yellow-50',
+    border: 'border-yellow-200',
+    steps: [
+      'In Postmark, go to your Server → Inbound Settings.',
+      'Set the Inbound webhook URL to the URL above.',
+      'Point your MX record for support@thecardmon.com to inbound.postmarkapp.com.',
+      'Optionally add the webhook secret as a query param: ?secret=YOUR_SECRET',
+    ],
+  },
+  {
+    name: 'SendGrid',
+    color: 'text-blue-700',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    steps: [
+      'In SendGrid, go to Settings → Inbound Parse.',
+      'Add a hostname (e.g. thecardmon.com) and paste the URL above as the destination.',
+      'Add the MX record: mx.sendgrid.net for your domain.',
+      'Optionally pass the secret in the URL: ?secret=YOUR_SECRET',
+    ],
+  },
+  {
+    name: 'Mailgun',
+    color: 'text-red-700',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+    steps: [
+      'In Mailgun, go to Receiving → Create Route.',
+      'Use action: forward(URL above).',
+      'Add the Mailgun MX records to your DNS.',
+      'Pass the webhook secret in a custom header: X-Webhook-Secret: YOUR_SECRET',
+    ],
+  },
+  {
+    name: 'Cloudflare Email Routing',
+    color: 'text-orange-700',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+    steps: [
+      'In Cloudflare, go to Email → Email Routing → Rules.',
+      'Add a Worker rule that forwards to the URL above via fetch().',
+      'Enable Email Routing on your domain and configure DNS automatically.',
+      'In your Worker, pass the secret as a header: X-Webhook-Secret: YOUR_SECRET',
+    ],
+  },
+];
+
+function EmailSetupModal({ onClose }: { onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const [activeProvider, setActiveProvider] = useState(0);
+
+  const copy = () => {
+    navigator.clipboard.writeText(WEBHOOK_URL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const provider = PROVIDERS[activeProvider];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
+              <Mail className="w-4 h-4 text-red-600" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 text-sm">Email Inbox Integration</h2>
+              <p className="text-xs text-gray-400">Forward emails to create tickets automatically</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* How it works */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">How it works</p>
+            <div className="space-y-1.5">
+              {[
+                { icon: Mail, text: 'Customer emails support@thecardmon.com' },
+                { icon: Zap, text: 'Your email provider forwards it as a webhook POST' },
+                { icon: Inbox, text: 'A ticket is automatically created in this panel' },
+                { icon: MessageSquare, text: 'Reply from here — replies are tracked in the thread' },
+              ].map(({ icon: Icon, text }, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-2.5 h-2.5 text-gray-500" />
+                  </div>
+                  <p className="text-xs text-gray-600">{text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Webhook URL */}
+          <div>
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Webhook URL</p>
+            <div className="flex items-center gap-2 bg-gray-900 rounded-xl px-4 py-3">
+              <code className="flex-1 text-xs text-green-400 font-mono break-all">{WEBHOOK_URL}</code>
+              <button
+                onClick={copy}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg transition-colors flex-shrink-0"
+              >
+                {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">
+              Optionally protect with a secret: append <code className="bg-gray-100 px-1 rounded">?secret=YOUR_SECRET</code> and set{' '}
+              <code className="bg-gray-100 px-1 rounded">INBOUND_EMAIL_SECRET</code> in your Supabase edge function secrets.
+            </p>
+          </div>
+
+          {/* Provider tabs */}
+          <div>
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Setup by Provider</p>
+            <div className="flex gap-1.5 flex-wrap mb-3">
+              {PROVIDERS.map((p, i) => (
+                <button
+                  key={p.name}
+                  onClick={() => setActiveProvider(i)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    activeProvider === i ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+            <div className={`rounded-xl border ${provider.border} ${provider.bg} p-4`}>
+              <p className={`text-xs font-bold ${provider.color} mb-3`}>{provider.name} Setup</p>
+              <ol className="space-y-2">
+                {provider.steps.map((step, i) => (
+                  <li key={i} className="flex gap-2.5">
+                    <span className={`w-5 h-5 rounded-full border ${provider.border} flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${provider.color} bg-white`}>
+                      {i + 1}
+                    </span>
+                    <p className="text-xs text-gray-700 leading-relaxed">{step}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+
+          {/* Supported formats note */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+            <p className="text-xs font-semibold text-blue-800 mb-1">Supported payload formats</p>
+            <p className="text-xs text-blue-700">
+              The webhook automatically detects Postmark, SendGrid, Mailgun, and generic JSON/form-data payloads.
+              Duplicate emails (same Message-ID) are silently skipped. Replies from the same sender within 7 days
+              are threaded onto the existing open ticket.
+            </p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── New Ticket Modal ─────────────────────────────────────────────────────────
@@ -424,6 +605,7 @@ export default function AdminSupport() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [showEmailSetup, setShowEmailSetup] = useState(false);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -482,6 +664,13 @@ export default function AdminSupport() {
             </div>
             <button onClick={fetchAll} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
               <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowEmailSetup(true)}
+              title="Email inbox setup"
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Mail className="w-4 h-4" />
             </button>
             <button onClick={() => setShowNew(true)} className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors">
               <Plus className="w-3.5 h-3.5" /> New
@@ -606,6 +795,12 @@ export default function AdminSupport() {
           onCreated={() => { setShowNew(false); fetchAll(); }}
         />
       )}
+      {showEmailSetup && (
+        <EmailSetupModal onClose={() => setShowEmailSetup(false)} />
+      )}
     </div>
   );
 }
+
+
+export default AdminSupport
