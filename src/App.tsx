@@ -38,7 +38,11 @@ function AppContent() {
   });
   const [productId, setProductId] = useState<string | null>(null);
   const [catalogType, setCatalogType] = useState<string>('');
-  const { isAdmin, isStaff, loading, user } = useAuth();
+  const { isAdmin, isStaff, loading, user, needsPasswordSetup } = useAuth();
+
+  useEffect(() => {
+    if (needsPasswordSetup) setCurrentPage('auth');
+  }, [needsPasswordSetup]);
 
   const [maintenance, setMaintenance] = useState<MaintenanceState>({
     enabled: false,

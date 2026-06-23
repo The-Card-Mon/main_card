@@ -13,6 +13,8 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isStaff: boolean;
+  needsPasswordSetup: boolean;
+  clearPasswordSetup: () => void;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -24,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false);
 
   const fetchProfile = useCallback(async (userId: string, userEmail?: string) => {
     const { data } = await supabase
@@ -49,12 +52,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (async () => {
         try {
           if (session?.user) {
             setUser({ id: session.user.id, email: session.user.email ?? '' });
             await fetchProfile(session.user.id, session.user.email ?? undefined);
+            // PASSWORD_RECOVERY fires when a reset/recovery link is clicked.
+            // SIGNED_IN with type=invite in the hash means the user arrived via invite.
+            if (
+              event === 'PASSWORD_RECOVERY' ||
+              (event === 'SIGNED_IN' && window.location.hash.includes('type=invite'))
+            ) {
+              setNeedsPasswordSetup(true);
+            }
           } else {
             setUser(null);
             setProfile(null);
@@ -96,7 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    setNeedsPasswordSetup(false);
   };
+
+  const clearPasswordSetup = () => setNeedsPasswordSetup(false);
 
   return (
     <AuthContext.Provider
@@ -106,6 +120,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         isAdmin: profile?.role === 'admin',
         isStaff: profile?.role === 'staff',
+        needsPasswordSetup,
+        clearPasswordSetup,
         signIn,
         signUp,
         signOut,
