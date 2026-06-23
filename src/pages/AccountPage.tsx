@@ -21,17 +21,11 @@ import {
   LayoutDashboard,
   Coins,
   ArrowDownToLine,
-  ExternalLink,
   TrendingUp,
   Gift,
-  Wallet,
-  Link,
-  Unlink,
-  Zap,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { connectMetaMask, getOnChainPkbBalance, isMetaMaskAvailable, shortAddress } from '../lib/pkb';
 import type { Order, OrderItem, Product } from '../types';
 
 type Tab = 'overview' | 'orders' | 'rewards' | 'profile' | 'security';
@@ -62,23 +56,9 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   // Rewards
-  type LedgerRow = { id: string; type: string; amount: number; description: string; created_at: string; pkb_tx_hash: string | null };
-  type WithdrawalRow = { id: string; amount: number; wallet_address: string; status: string; tx_hash: string | null; created_at: string };
+  type LedgerRow = { id: string; type: string; amount: number; description: string; created_at: string };
   const [pkbLedger, setPkbLedger] = useState<LedgerRow[]>([]);
-  const [pkbWithdrawals, setPkbWithdrawals] = useState<WithdrawalRow[]>([]);
   const [rewardsLoading, setRewardsLoading] = useState(true);
-  const [withdrawWallet, setWithdrawWallet] = useState('');
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [withdrawing, setWithdrawing] = useState(false);
-  const [withdrawMsg, setWithdrawMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // Wallet / on-chain
-  const [walletAddress, setWalletAddress] = useState<string | null>(profile?.wallet_address ?? null);
-  const [onChainBalance, setOnChainBalance] = useState<number | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [balanceError, setBalanceError] = useState<string | null>(null);
-  const [walletConnecting, setWalletConnecting] = useState(false);
-  const [walletMsg, setWalletMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Profile edit
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
@@ -106,53 +86,20 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
         setOrdersLoading(false);
       });
 
-    Promise.all([
-      supabase.from('rewards_ledger').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('rewards_withdrawals').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-    ]).then(([ledgerRes, wRes]) => {
-      setPkbLedger((ledgerRes.data ?? []) as LedgerRow[]);
-      setPkbWithdrawals((wRes.data ?? []) as WithdrawalRow[]);
-      setRewardsLoading(false);
-    });
+    supabase
+      .from('rewards_ledger')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setPkbLedger((data ?? []) as LedgerRow[]);
+        setRewardsLoading(false);
+      });
   }, [user]);
 
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
-    if (profile?.wallet_address) setWalletAddress(profile.wallet_address);
   }, [profile]);
-
-  useEffect(() => {
-    if (!walletAddress) { setOnChainBalance(null); setBalanceError(null); return; }
-    setBalanceLoading(true);
-    setBalanceError(null);
-    getOnChainPkbBalance(walletAddress)
-      .then((bal) => { setOnChainBalance(bal); setBalanceError(null); })
-      .catch((err) => { setOnChainBalance(null); setBalanceError(err?.message ?? 'Could not fetch balance'); })
-      .finally(() => setBalanceLoading(false));
-  }, [walletAddress]);
-
-  const handleConnectWallet = async () => {
-    setWalletConnecting(true);
-    setWalletMsg(null);
-    try {
-      const address = await connectMetaMask();
-      await supabase.from('profiles').update({ wallet_address: address }).eq('id', user!.id);
-      setWalletAddress(address);
-      setWalletMsg({ type: 'success', text: `Wallet connected! $PKB rewards will be sent here automatically.` });
-    } catch (err: any) {
-      setWalletMsg({ type: 'error', text: err.message ?? 'Failed to connect wallet.' });
-    } finally {
-      setWalletConnecting(false);
-      setTimeout(() => setWalletMsg(null), 5000);
-    }
-  };
-
-  const handleDisconnectWallet = async () => {
-    if (!confirm('Disconnect your wallet? You will no longer receive on-chain $PKB rewards automatically.')) return;
-    await supabase.from('profiles').update({ wallet_address: null }).eq('id', user!.id);
-    setWalletAddress(null);
-    setOnChainBalance(null);
-  };
 
   if (!user) {
     return (
@@ -223,32 +170,6 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
   };
 
   const pkbBalance = pkbLedger.reduce((sum, r) => sum + Number(r.amount), 0);
-
-  const handleWithdraw = async () => {
-    if (!withdrawWallet.trim() || !withdrawAmount || Number(withdrawAmount) < 100) return;
-    setWithdrawing(true);
-    try {
-      const { error } = await supabase.rpc('request_pokebucks_withdrawal', {
-        p_amount: Number(withdrawAmount),
-        p_wallet: withdrawWallet.trim(),
-      });
-      if (error) throw new Error(error.message);
-      setWithdrawMsg({ type: 'success', text: `Withdrawal of ${withdrawAmount} $PKB submitted! Admin will process it shortly.` });
-      setWithdrawWallet(''); setWithdrawAmount('');
-      // Refresh ledger
-      const [ledgerRes, wRes] = await Promise.all([
-        supabase.from('rewards_ledger').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
-        supabase.from('rewards_withdrawals').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
-      ]);
-      setPkbLedger((ledgerRes.data ?? []) as LedgerRow[]);
-      setPkbWithdrawals((wRes.data ?? []) as WithdrawalRow[]);
-    } catch (err: any) {
-      setWithdrawMsg({ type: 'error', text: err.message ?? 'Withdrawal failed. Please try again.' });
-    } finally {
-      setWithdrawing(false);
-      setTimeout(() => setWithdrawMsg(null), 5000);
-    }
-  };
 
   const tabs: { id: Tab; label: string; icon: typeof User }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -534,13 +455,12 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                     <div className="flex items-center gap-2 mb-3">
                       <Coins className="w-5 h-5 text-yellow-100" />
                       <span className="text-xs font-bold text-yellow-100 uppercase tracking-widest">PokeBucks Balance</span>
-                      <span className="ml-auto text-[10px] font-bold bg-white/20 border border-white/30 px-2 py-0.5 rounded-full">Polygon Network</span>
                     </div>
                     <p className="text-4xl font-black tracking-tight" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
                       {rewardsLoading ? '—' : Math.max(0, pkbBalance).toLocaleString()}
                     </p>
                     <p className="text-yellow-100 font-semibold text-lg">$PKB</p>
-                    <p className="text-yellow-200 text-sm mt-1">≈ ${(Math.max(0, pkbBalance) / 10).toFixed(2)} USD value</p>
+                    <p className="text-yellow-200 text-sm mt-1">≈ ${(Math.max(0, pkbBalance) / 10).toFixed(2)} off your next order</p>
                     <div className="mt-4 flex items-center gap-3 flex-wrap">
                       <div className="flex items-center gap-1.5 bg-white/15 border border-white/20 rounded-lg px-3 py-1.5">
                         <TrendingUp className="w-3.5 h-3.5 text-yellow-100" />
@@ -548,7 +468,7 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                       </div>
                       <div className="flex items-center gap-1.5 bg-white/15 border border-white/20 rounded-lg px-3 py-1.5">
                         <Gift className="w-3.5 h-3.5 text-yellow-100" />
-                        <span className="text-xs font-semibold text-yellow-100">Apply at checkout</span>
+                        <span className="text-xs font-semibold text-yellow-100">Redeem at checkout</span>
                       </div>
                       <button
                         onClick={() => onNavigate('mystery-boxes')}
@@ -561,142 +481,21 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                   </div>
                 </div>
 
-                {/* Wallet connect card */}
-                <div className={`rounded-2xl border overflow-hidden shadow-sm ${walletAddress ? 'bg-white border-gray-100' : 'bg-gradient-to-br from-gray-900 to-gray-800 border-gray-700'}`}>
-                  <div className={`px-5 py-4 border-b ${walletAddress ? 'border-gray-100' : 'border-white/10'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Wallet className={`w-4 h-4 ${walletAddress ? 'text-green-500' : 'text-gray-400'}`} />
-                        <span className={`font-semibold text-sm ${walletAddress ? 'text-gray-900' : 'text-white'}`}>
-                          Polygon Wallet
-                        </span>
-                        {walletAddress && (
-                          <span className="text-[10px] font-bold bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">Connected</span>
-                        )}
+                {/* How it works */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {[
+                    { step: '1', title: 'Shop & earn', desc: 'Get 10 $PKB for every $1 you spend on any order.' },
+                    { step: '2', title: 'Accumulate points', desc: 'Points never expire. Stack them up over time.' },
+                    { step: '3', title: 'Redeem at checkout', desc: 'Every 10 $PKB = $1 off. Apply as many as you like.' },
+                  ].map(({ step, title, desc }) => (
+                    <div key={step} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                      <div className="w-7 h-7 rounded-lg bg-yellow-100 text-yellow-700 font-black text-sm flex items-center justify-center mb-3">
+                        {step}
                       </div>
-                      {walletAddress && (
-                        <button
-                          onClick={handleDisconnectWallet}
-                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition-colors"
-                        >
-                          <Unlink className="w-3 h-3" />
-                          Disconnect
-                        </button>
-                      )}
+                      <p className="text-sm font-semibold text-gray-900">{title}</p>
+                      <p className="text-xs text-gray-400 mt-1 leading-relaxed">{desc}</p>
                     </div>
-                  </div>
-
-                  <div className="p-5">
-                    {walletMsg && (
-                      <div className={`flex items-start gap-2 text-sm px-4 py-3 rounded-xl border mb-4 ${
-                        walletMsg.type === 'success'
-                          ? 'bg-green-50 text-green-700 border-green-200'
-                          : 'bg-red-50 text-red-700 border-red-200'
-                      }`}>
-                        {walletMsg.type === 'success'
-                          ? <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          : <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
-                        {walletMsg.text}
-                      </div>
-                    )}
-
-                    {walletAddress ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-gray-400 font-medium mb-0.5">Wallet Address</p>
-                            <div className="flex items-center gap-2">
-                              <code className="text-sm font-mono font-semibold text-gray-800">{shortAddress(walletAddress)}</code>
-                              <a
-                                href={`https://polygonscan.com/address/${walletAddress}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-gray-400 hover:text-blue-600 transition-colors"
-                                title="View on Polygonscan"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs text-gray-400 font-medium mb-0.5">On-Chain Balance</p>
-                            {balanceLoading ? (
-                              <div className="flex items-center justify-end gap-1.5">
-                                <Loader2 className="w-4 h-4 animate-spin text-yellow-500" />
-                                <span className="text-xs text-gray-400">Loading...</span>
-                              </div>
-                            ) : balanceError ? (
-                              <button
-                                onClick={() => {
-                                  setBalanceLoading(true);
-                                  setBalanceError(null);
-                                  getOnChainPkbBalance(walletAddress!)
-                                    .then((b) => { setOnChainBalance(b); })
-                                    .catch((e) => setBalanceError(e?.message ?? 'Error'))
-                                    .finally(() => setBalanceLoading(false));
-                                }}
-                                className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 justify-end"
-                                title={balanceError}
-                              >
-                                RPC error — retry
-                              </button>
-                            ) : (
-                              <p className="text-lg font-black text-gray-900" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
-                                {onChainBalance !== null ? onChainBalance.toLocaleString() : '0'}
-                                <span className="text-xs font-semibold text-yellow-600 ml-1">$PKB</span>
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-xl">
-                          <Zap className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                          <p className="text-xs text-green-700 font-medium">
-                            $PKB rewards are sent automatically to this wallet after every purchase.
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <p className="text-sm text-gray-400 leading-relaxed">
-                          Connect your Polygon wallet to receive real $PKB tokens on-chain after every purchase. Completely optional — you can still shop and redeem rewards without it.
-                        </p>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          {[
-                            { icon: Zap, text: 'Auto-sent after every purchase' },
-                            { icon: TrendingUp, text: 'Real tokens on Polygon' },
-                            { icon: Gift, text: '10 $PKB per $1 spent' },
-                            { icon: ExternalLink, text: 'Trade or hold on Polygon' },
-                          ].map(({ icon: Icon, text }) => (
-                            <div key={text} className="flex items-center gap-1.5 text-gray-500">
-                              <Icon className="w-3 h-3 text-yellow-500 flex-shrink-0" />
-                              {text}
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          onClick={handleConnectWallet}
-                          disabled={walletConnecting || !isMetaMaskAvailable()}
-                          className="flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:opacity-90 disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm"
-                        >
-                          {walletConnecting
-                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                            : <Link className="w-4 h-4" />}
-                          {walletConnecting ? 'Connecting...' : isMetaMaskAvailable() ? 'Connect MetaMask' : 'Install MetaMask first'}
-                        </button>
-                        {!isMetaMaskAvailable() && (
-                          <a
-                            href="https://metamask.io/download/"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            Download MetaMask
-                          </a>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
 
                 {/* Transaction history */}
@@ -740,16 +539,6 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                               <span className={`text-sm font-bold ${isCredit ? 'text-green-600' : 'text-red-500'}`}>
                                 {isCredit ? '+' : ''}{Number(row.amount).toLocaleString()} $PKB
                               </span>
-                              {row.pkb_tx_hash && (
-                                <a
-                                  href={`https://polygonscan.com/tx/${row.pkb_tx_hash}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
-                                >
-                                  On-chain <ExternalLink className="w-2.5 h-2.5" />
-                                </a>
-                              )}
                             </div>
                           </div>
                         );
@@ -758,124 +547,6 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                   )}
                 </div>
 
-                {/* Withdraw to wallet */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100">
-                    <h3 className="font-semibold text-gray-900 text-sm">Withdraw to Polygon Wallet</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Transfer $PKB to your MetaMask or any Polygon-compatible wallet. Min. 100 $PKB.</p>
-                  </div>
-                  <div className="p-5 space-y-4">
-                    {withdrawMsg && (
-                      <div className={`flex items-start gap-2 text-sm px-4 py-3 rounded-xl border ${
-                        withdrawMsg.type === 'success'
-                          ? 'bg-green-50 text-green-700 border-green-200'
-                          : 'bg-red-50 text-red-700 border-red-200'
-                      }`}>
-                        {withdrawMsg.type === 'success'
-                          ? <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          : <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
-                        {withdrawMsg.text}
-                      </div>
-                    )}
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                        Polygon Wallet Address
-                      </label>
-                      <div className="relative">
-                        <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                          type="text"
-                          value={withdrawWallet}
-                          onChange={(e) => setWithdrawWallet(e.target.value)}
-                          placeholder="0x..."
-                          className="w-full pl-9 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent font-mono"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                        Amount ($PKB) — Balance: {Math.max(0, pkbBalance).toLocaleString()} $PKB
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          min="100"
-                          step="10"
-                          max={Math.max(0, pkbBalance)}
-                          value={withdrawAmount}
-                          onChange={(e) => setWithdrawAmount(e.target.value)}
-                          placeholder="Min. 100"
-                          className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                        />
-                        <button
-                          onClick={() => setWithdrawAmount(String(Math.max(0, pkbBalance)))}
-                          className="px-3 py-2.5 text-xs font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl hover:bg-yellow-100 transition-colors"
-                        >
-                          Max
-                        </button>
-                      </div>
-                      {withdrawAmount && Number(withdrawAmount) >= 100 && (
-                        <p className="text-xs text-gray-400 mt-1.5">≈ ${(Number(withdrawAmount) / 10).toFixed(2)} USD equivalent on Polygon</p>
-                      )}
-                    </div>
-                    <button
-                      onClick={handleWithdraw}
-                      disabled={withdrawing || !withdrawWallet.trim() || Number(withdrawAmount) < 100 || Number(withdrawAmount) > pkbBalance}
-                      className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-yellow-900/20"
-                    >
-                      {withdrawing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
-                      {withdrawing ? 'Submitting...' : 'Request Withdrawal'}
-                    </button>
-                    <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <ExternalLink className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                      <p className="text-xs text-gray-500">Withdrawals are processed manually within 1–3 business days and sent to your wallet on the Polygon network.</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pending withdrawals */}
-                {pkbWithdrawals.length > 0 && (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-gray-100">
-                      <h3 className="font-semibold text-gray-900 text-sm">Withdrawal Requests</h3>
-                    </div>
-                    <div className="divide-y divide-gray-50">
-                      {pkbWithdrawals.map((w) => {
-                        const statusColor: Record<string, string> = {
-                          pending: 'bg-amber-50 text-amber-700 border-amber-200',
-                          processing: 'bg-blue-50 text-blue-700 border-blue-200',
-                          completed: 'bg-green-50 text-green-700 border-green-200',
-                          rejected: 'bg-red-50 text-red-700 border-red-200',
-                        };
-                        return (
-                          <div key={w.id} className="flex items-center gap-4 px-5 py-3.5">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className={`inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColor[w.status] ?? statusColor.pending}`}>
-                                  {w.status.charAt(0).toUpperCase() + w.status.slice(1)}
-                                </span>
-                                <span className="text-sm font-bold text-gray-900">{w.amount.toLocaleString()} $PKB</span>
-                              </div>
-                              <p className="text-xs text-gray-400 font-mono">{w.wallet_address.slice(0, 10)}...{w.wallet_address.slice(-6)}</p>
-                              {w.tx_hash && (
-                                <a
-                                  href={`https://polygonscan.com/tx/${w.tx_hash}`}
-                                  target="_blank" rel="noopener noreferrer"
-                                  className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-0.5"
-                                >
-                                  View on Polygonscan <ExternalLink className="w-2.5 h-2.5" />
-                                </a>
-                              )}
-                            </div>
-                            <p className="text-xs text-gray-400 flex-shrink-0">
-                              {new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </>
             )}
 

@@ -6,11 +6,10 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { ArrowLeft, ArrowRight, CheckCircle, Lock, Package, ShoppingBag, Coins, TrendingUp, X, Zap, ExternalLink, Truck, Tag, Check, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle, Lock, Package, ShoppingBag, Coins, TrendingUp, X, Truck, Tag, Check, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { shortAddress } from '../lib/pkb';
 
 const STRIPE_KEY = 'pk_live_51TgD1JKG4lPUYddupc0dnUE02tO1ZVrI4aBZpH7XvyGSgyAb0BDPldF6CtJUgEUKrghu65kTuVYK48ZLDrezbdbd000rpgHH4Z';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -575,11 +574,9 @@ function PaymentFormInner({ shipping, totalPrice, onBack, onSuccess }: PaymentFo
 
 // ─── Confirmation Screen ─────────────────────────────────────────────────────
 
-function ConfirmationScreen({ onNavigate, pkbEarned, pkbTxHash, walletAddress }: {
+function ConfirmationScreen({ onNavigate, pkbEarned }: {
   onNavigate: (page: string) => void;
   pkbEarned: number;
-  pkbTxHash: string | null;
-  walletAddress: string | null;
 }) {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -603,24 +600,7 @@ function ConfirmationScreen({ onNavigate, pkbEarned, pkbTxHash, walletAddress }:
               <p className="text-xl font-black text-yellow-800" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
                 +{pkbEarned.toLocaleString()} $PKB
               </p>
-              {pkbTxHash ? (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Zap className="w-3 h-3 text-green-600 flex-shrink-0" />
-                  <span className="text-xs text-green-700 font-medium">
-                    Sent to {walletAddress ? shortAddress(walletAddress) : 'your wallet'} on Polygon ·{' '}
-                  </span>
-                  <a
-                    href={`https://polygonscan.com/tx/${pkbTxHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-0.5 font-medium"
-                  >
-                    View tx <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </div>
-              ) : (
-                <p className="text-xs text-yellow-600 mt-0.5">Added to your account · View in PokeBucks tab</p>
-              )}
+              <p className="text-xs text-yellow-600 mt-0.5">Added to your account · Redeem on your next order</p>
             </div>
           </div>
         )}
@@ -662,7 +642,6 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   const [pkbBalance, setPkbBalance] = useState(0);
   const [pkbToApply, setPkbToApply] = useState(0);
   const [pkbEarned, setPkbEarned] = useState(0);
-  const [pkbTxHash, setPkbTxHash] = useState<string | null>(null);
 
   // Tax (resolved server-side after shipping step)
   const [taxAmount, setTaxAmount] = useState(0);
@@ -837,8 +816,6 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
     <ConfirmationScreen
       onNavigate={onNavigate}
       pkbEarned={pkbEarned}
-      pkbTxHash={pkbTxHash}
-      walletAddress={profile?.wallet_address ?? null}
     />
   );
 
@@ -933,30 +910,9 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
         await supabase.rpc('spend_pokebucks', { p_amount: pkbToApply, p_order_id: order.id });
       }
 
-      // Award PKB for this purchase (off-chain ledger)
+      // Award PKB for this purchase
       const { data: earned } = await supabase.rpc('award_pokebucks_for_order', { p_order_id: order.id });
-      const earnedAmount = Number(earned) ?? 0;
-      setPkbEarned(earnedAmount);
-
-      // If the user has a wallet linked, send real $PKB on-chain from treasury
-      if (earnedAmount > 0 && profile?.wallet_address) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const token = session?.access_token;
-          if (token) {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-            const res = await fetch(`${supabaseUrl}/functions/v1/pkb-transfer`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ action: 'transfer', order_id: order.id }),
-            });
-            const txData = await res.json();
-            if (txData.tx_hash) setPkbTxHash(txData.tx_hash);
-          }
-        } catch {
-          // On-chain transfer failed silently — ledger entry still exists, user can withdraw later
-        }
-      }
+      setPkbEarned(Number(earned) ?? 0);
 
       clearCart();
       setStep('done');
