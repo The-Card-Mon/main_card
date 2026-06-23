@@ -146,16 +146,33 @@ Deno.serve(async (req: Request) => {
 
       if (fetchErr || !invitation) return respond({ error: "Pending invitation not found" }, 404);
 
+      const siteUrl = Deno.env.get("SITE_URL") ?? "";
+
+      // Try inviteUserByEmail first — works for users who haven't confirmed yet.
+      // If the auth user is already confirmed (clicked the original link), this
+      // will fail with "already registered". In that case fall back to a recovery
+      // email so the user gets a fresh link to set their password.
       const { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(invitation.email, {
         data: { invited_role: invitation.role },
-        redirectTo: `${Deno.env.get("SITE_URL") ?? ""}/auth?invited=1`,
+        redirectTo: `${siteUrl}/auth?invited=1`,
       });
 
-      if (inviteErr) {
-        return respond({ error: inviteErr.message }, 500);
+      if (!inviteErr) {
+        return respond({ success: true, email: invitation.email, method: "invite" });
       }
 
-      return respond({ success: true, email: invitation.email });
+      // Auth user already confirmed — send a recovery/password-reset email instead.
+      // The recovery link lands on /auth?invited=1 with #type=recovery which our
+      // AuthPage already handles with the "set password" form.
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(invitation.email, {
+        redirectTo: `${siteUrl}/auth?invited=1`,
+      });
+
+      if (resetErr) {
+        return respond({ error: resetErr.message }, 500);
+      }
+
+      return respond({ success: true, email: invitation.email, method: "recovery" });
     }
 
     // ── Update customer ──────────────────────────────────────────────────────
