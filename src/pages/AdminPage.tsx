@@ -13,6 +13,7 @@ import AdminStaff from '../components/admin/AdminStaff';
 import AdminFinance from '../components/admin/AdminFinance';
 import AdminShipping from '../components/admin/AdminShipping';
 import AdminDiscounts from '../components/admin/AdminDiscounts';
+import AdminSupport from '../components/admin/AdminSupport';
 
 interface AdminPageProps {
   onNavigate: (page: string) => void;
@@ -39,6 +40,7 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
       {section === 'finance' && <AdminFinance />}
       {section === 'shipping' && <AdminShipping />}
       {section === 'staff' && <AdminStaff />}
+      {section === 'support' && <AdminSupport />}
       {section === 'settings' && <AdminSettings />}
     </AdminLayout>
   );

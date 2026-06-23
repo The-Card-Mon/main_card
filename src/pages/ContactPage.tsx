@@ -34,18 +34,32 @@ export default function ContactPage({ onNavigate }: ContactPageProps) {
     setSubmitting(true);
     setError(null);
 
-    const { error: dbErr } = await supabase.from('contact_submissions').insert({
-      name: form.name.trim(),
-      email: form.email.trim(),
-      subject: form.subject,
-      message: form.message.trim(),
-    });
+    const { data: inserted, error: dbErr } = await supabase
+      .from('contact_submissions')
+      .insert({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        subject: form.subject,
+        message: form.message.trim(),
+      })
+      .select('id')
+      .single();
 
     if (dbErr) {
       setError('Something went wrong. Please try again or email us directly.');
       setSubmitting(false);
       return;
     }
+
+    // Auto-create a support ticket for every contact form submission
+    await supabase.rpc('create_support_ticket', {
+      p_subject: form.subject,
+      p_customer_name: form.name.trim(),
+      p_customer_email: form.email.trim(),
+      p_message: form.message.trim(),
+      p_source: 'contact_form',
+      p_contact_submission_id: inserted?.id ?? null,
+    });
 
     setSent(true);
     setSubmitting(false);

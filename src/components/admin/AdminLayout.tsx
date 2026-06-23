@@ -2,13 +2,13 @@ import type { ReactNode } from 'react';
 import {
   LayoutDashboard, Package, ShoppingBag, Users, Settings, ChevronRight,
   Flame, ExternalLink, Menu, X, ArrowDownToLine, Megaphone, Share2,
-  Coins, UserCog, Shield, TrendingUp, Truck, Tag,
+  Coins, UserCog, Shield, TrendingUp, Truck, Tag, Headphones,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export type AdminSection =
-  | 'dashboard' | 'orders' | 'customers' | 'sell-requests'
+  | 'dashboard' | 'orders' | 'customers' | 'sell-requests' | 'support'
   | 'products' | 'modal' | 'social' | 'rewards' | 'shipping' | 'discounts'
   | 'finance' | 'staff' | 'settings';
 
@@ -17,6 +17,7 @@ const SECTION_TITLES: Record<AdminSection, string> = {
   orders:         'Orders',
   customers:      'Customers',
   'sell-requests':'Sell Requests',
+  support:        'Support Tickets',
   products:       'Products',
   modal:          'Promotions',
   social:         'Social Media',
@@ -49,6 +50,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'orders',        label: 'Orders',         icon: ShoppingBag },
       { id: 'customers',     label: 'Customers',      icon: Users },
       { id: 'sell-requests', label: 'Sell Requests',  icon: ArrowDownToLine },
+      { id: 'support',       label: 'Support',        icon: Headphones },
     ],
   },
   {
