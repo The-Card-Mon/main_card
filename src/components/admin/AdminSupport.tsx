@@ -113,6 +113,19 @@ const WEBHOOK_URL = 'https://muzrllgnyzwbtcyqybwy.supabase.co/functions/v1/inbou
 
 const PROVIDERS = [
   {
+    name: 'Zoho Mail',
+    color: 'text-teal-700',
+    bg: 'bg-teal-50',
+    border: 'border-teal-200',
+    steps: [
+      'In Zoho Mail, go to Settings → Integrations → Webhooks (or Developer Space → Outgoing Webhooks).',
+      'Click Add Webhook. Set the name to "Supabase Email Processor" and paste the URL above.',
+      'Set the event trigger to "Email Received" (onReceive) for the mailbox you want to monitor.',
+      'Set the request format to JSON and save. No additional header configuration is required.',
+      'To verify: use the Test Webhook tab above — a ticket should appear in the Open list instantly.',
+    ],
+  },
+  {
     name: 'Postmark',
     color: 'text-yellow-700',
     bg: 'bg-yellow-50',

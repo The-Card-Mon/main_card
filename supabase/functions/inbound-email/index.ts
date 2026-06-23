@@ -15,28 +15,18 @@ const respond = (body: unknown, status = 200) =>
 
 const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
 
-/**
- * Extract email address and display name from a From header value.
- * Handles: "Name <email>", "<email>", "email", "email (Name)"
- */
 function parseFrom(raw: string): { email: string; name: string } {
   raw = raw.trim();
-
-  // "Name <email@domain>" or "<email@domain>"
   const angleMatch = raw.match(/^(.*?)\s*<([^>]+)>\s*$/);
   if (angleMatch) {
     const email = angleMatch[2].trim();
     const name = angleMatch[1].trim().replace(/^["']|["']$/g, "");
     return { email, name: name || email.split("@")[0] };
   }
-
-  // Bare email address (contains @)
   const bareEmail = raw.match(EMAIL_RE);
   if (bareEmail) {
     return { email: bareEmail[0], name: bareEmail[0].split("@")[0] };
   }
-
-  // Last resort: use the raw string as email (will likely fail validation later)
   return { email: raw, name: raw };
 }
 
@@ -44,19 +34,18 @@ function isValidEmail(s: string): boolean {
   return EMAIL_RE.test(s);
 }
 
-/**
- * Normalise inbound email payloads from Postmark, SendGrid, Mailgun, or generic JSON.
- * Logs the raw payload to stderr for debugging.
- */
-async function parseEmail(req: Request): Promise<{
+type ParsedEmail = {
   from_email: string;
   from_name: string;
   subject: string;
   body: string;
   message_id: string | null;
-} | null> {
+};
+
+async function parseEmail(req: Request): Promise<ParsedEmail | null> {
   const ct = req.headers.get("content-type") ?? "";
-  let raw: Record<string, string> = {};
+  // deno-lint-ignore no-explicit-any
+  let raw: Record<string, any> = {};
 
   if (ct.includes("application/json")) {
     raw = await req.json();
@@ -66,7 +55,6 @@ async function parseEmail(req: Request): Promise<{
       if (typeof v === "string") raw[k] = v;
     }
   } else {
-    // Try JSON anyway as a fallback for misconfigured providers
     try {
       raw = await req.json();
     } catch {
@@ -75,9 +63,28 @@ async function parseEmail(req: Request): Promise<{
   }
 
   console.log("inbound-email raw keys:", Object.keys(raw).join(", "));
+  console.log("inbound-email raw:", JSON.stringify(raw).slice(0, 500));
+
+  // --- Zoho Mail outgoing webhook ---
+  // Fields: event, from, fromName (or fromDisplayName), to, subject,
+  //         messageId, summary, receivedTime, accountId, folderId
+  if ("event" in raw || "receivedTime" in raw || "accountId" in raw || "folderId" in raw) {
+    const fromStr: string = raw["from"] ?? raw["fromAddress"] ?? "";
+    const { email, name } = parseFrom(fromStr);
+    const displayName: string = raw["fromName"] ?? raw["fromDisplayName"] ?? raw["senderName"] ?? name;
+    const body = stripHtml(
+      raw["content"] ?? raw["text"] ?? raw["html"] ?? raw["summary"] ?? raw["snippet"] ?? ""
+    );
+    return {
+      from_email: email,
+      from_name: displayName,
+      subject: raw["subject"] ?? "(no subject)",
+      body,
+      message_id: raw["messageId"] ?? raw["MessageId"] ?? raw["message_id"] ?? null,
+    };
+  }
 
   // --- Postmark ---
-  // Fields: From, FromName, Subject, TextBody, HtmlBody, MessageID
   if ("MessageID" in raw || "TextBody" in raw || "HtmlBody" in raw) {
     const { email, name } = parseFrom(raw["From"] ?? "");
     return {
@@ -90,7 +97,6 @@ async function parseEmail(req: Request): Promise<{
   }
 
   // --- SendGrid Inbound Parse ---
-  // Fields: from, subject, text, html, headers
   if ("from" in raw && ("text" in raw || "html" in raw)) {
     const { email, name } = parseFrom(raw["from"] ?? "");
     const msgIdMatch = (raw["headers"] ?? "").match(/Message-ID:\s*(<[^>]+>)/i);
@@ -104,7 +110,6 @@ async function parseEmail(req: Request): Promise<{
   }
 
   // --- Mailgun ---
-  // Fields: sender, from, subject, body-plain, body-html, Message-Id
   if ("sender" in raw || "body-plain" in raw || "body-html" in raw) {
     const fromStr = raw["from"] ?? raw["sender"] ?? "";
     const { email, name } = parseFrom(fromStr);
@@ -117,25 +122,26 @@ async function parseEmail(req: Request): Promise<{
     };
   }
 
-  // --- Cloudflare / generic JSON ---
-  const fromField = raw["from"] ?? raw["from_email"] ?? raw["sender"] ?? "";
+  // --- Generic / Cloudflare Workers ---
+  const fromField = raw["from"] ?? raw["from_email"] ?? raw["sender"] ?? raw["fromAddress"] ?? "";
   if (fromField) {
-    const { email, name } = parseFrom(fromField);
+    const { email, name } = parseFrom(String(fromField));
     return {
       from_email: email,
-      from_name: raw["from_name"] ?? name,
-      subject: raw["subject"] || "(no subject)",
-      body: stripHtml(raw["text"] ?? raw["body"] ?? raw["message"] ?? raw["html"] ?? ""),
-      message_id: raw["message_id"] ?? raw["Message-Id"] ?? null,
+      from_name: raw["from_name"] ?? raw["fromName"] ?? name,
+      subject: raw["subject"] ?? "(no subject)",
+      body: stripHtml(
+        raw["text"] ?? raw["body"] ?? raw["message"] ?? raw["html"] ?? raw["summary"] ?? ""
+      ),
+      message_id: raw["message_id"] ?? raw["messageId"] ?? raw["Message-Id"] ?? null,
     };
   }
 
   return null;
 }
 
-/** Strip basic HTML tags and decode common entities for plain-text storage. */
 function stripHtml(html: string): string {
-  return html
+  return String(html)
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>/gi, "\n")
     .replace(/<[^>]+>/g, "")
@@ -154,7 +160,6 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url);
 
-  // GET → health check / connectivity test
   if (req.method === "GET") {
     return respond({
       ok: true,
@@ -166,7 +171,6 @@ Deno.serve(async (req: Request) => {
 
   if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
 
-  // Optional webhook secret check
   const webhookSecret = Deno.env.get("INBOUND_EMAIL_SECRET");
   if (webhookSecret) {
     const provided =
@@ -183,27 +187,28 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  let email: Awaited<ReturnType<typeof parseEmail>>;
+  let email: ParsedEmail | null;
   try {
     email = await parseEmail(req);
   } catch (err) {
     console.error("parseEmail error:", err);
-    return respond({ error: "Failed to parse request body" }, 400);
+    // Return 200 so providers like Zoho don't mark the webhook as failing
+    return respond({ ok: false, error: "Failed to parse request body" });
   }
 
   if (!email) {
-    return respond({ error: "Could not parse email payload — unknown format" }, 400);
+    console.error("Could not detect email format");
+    // Return 200 — unknown format should not cause the provider to disable the webhook
+    return respond({ ok: false, error: "Could not parse email payload — unknown format" });
   }
 
   if (!isValidEmail(email.from_email)) {
-    console.error("Invalid from_email:", email.from_email);
-    return respond({ error: `Invalid sender email: ${email.from_email}` }, 400);
+    console.error("Invalid from_email extracted:", email.from_email);
+    return respond({ ok: false, error: `Invalid sender email: ${email.from_email}` });
   }
 
-  // Body fallback so NOT NULL is satisfied
   const body = email.body.trim() || "(no message body)";
 
-  // Deduplicate by Message-ID
   if (email.message_id) {
     const { count } = await supabase
       .from("support_tickets")
@@ -214,7 +219,6 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Thread onto an existing open ticket from same sender (within 7 days)
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: existing } = await supabase
     .from("support_tickets")
@@ -238,7 +242,6 @@ Deno.serve(async (req: Request) => {
     return respond({ ok: true, ticket_id: existing.id, threaded: true });
   }
 
-  // Create new ticket
   const { data: ticket, error: ticketErr } = await supabase
     .from("support_tickets")
     .insert({
@@ -254,7 +257,8 @@ Deno.serve(async (req: Request) => {
 
   if (ticketErr || !ticket) {
     console.error("ticket insert error:", ticketErr);
-    return respond({ error: ticketErr?.message ?? "Failed to create ticket" }, 500);
+    // Still return 200 so the provider doesn't retry/disable
+    return respond({ ok: false, error: ticketErr?.message ?? "Failed to create ticket" });
   }
 
   const { error: replyErr } = await supabase.from("ticket_replies").insert({
