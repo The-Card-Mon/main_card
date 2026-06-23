@@ -13,14 +13,40 @@ const respond = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
+
 /**
- * Normalise inbound email payloads from common providers into a single shape.
- *
- * Supported providers:
- *  - Postmark  (application/json)
- *  - SendGrid  (multipart/form-data  OR  application/json)
- *  - Mailgun   (multipart/form-data  OR  application/x-www-form-urlencoded)
- *  - Generic   ({ from, subject, text, html })
+ * Extract email address and display name from a From header value.
+ * Handles: "Name <email>", "<email>", "email", "email (Name)"
+ */
+function parseFrom(raw: string): { email: string; name: string } {
+  raw = raw.trim();
+
+  // "Name <email@domain>" or "<email@domain>"
+  const angleMatch = raw.match(/^(.*?)\s*<([^>]+)>\s*$/);
+  if (angleMatch) {
+    const email = angleMatch[2].trim();
+    const name = angleMatch[1].trim().replace(/^["']|["']$/g, "");
+    return { email, name: name || email.split("@")[0] };
+  }
+
+  // Bare email address (contains @)
+  const bareEmail = raw.match(EMAIL_RE);
+  if (bareEmail) {
+    return { email: bareEmail[0], name: bareEmail[0].split("@")[0] };
+  }
+
+  // Last resort: use the raw string as email (will likely fail validation later)
+  return { email: raw, name: raw };
+}
+
+function isValidEmail(s: string): boolean {
+  return EMAIL_RE.test(s);
+}
+
+/**
+ * Normalise inbound email payloads from Postmark, SendGrid, Mailgun, or generic JSON.
+ * Logs the raw payload to stderr for debugging.
  */
 async function parseEmail(req: Request): Promise<{
   from_email: string;
@@ -30,7 +56,6 @@ async function parseEmail(req: Request): Promise<{
   message_id: string | null;
 } | null> {
   const ct = req.headers.get("content-type") ?? "";
-
   let raw: Record<string, string> = {};
 
   if (ct.includes("application/json")) {
@@ -41,76 +66,99 @@ async function parseEmail(req: Request): Promise<{
       if (typeof v === "string") raw[k] = v;
     }
   } else {
-    return null;
+    // Try JSON anyway as a fallback for misconfigured providers
+    try {
+      raw = await req.json();
+    } catch {
+      return null;
+    }
   }
 
+  console.log("inbound-email raw keys:", Object.keys(raw).join(", "));
+
   // --- Postmark ---
-  // { From, FromName, Subject, TextBody, HtmlBody, MessageID }
-  if (raw["MessageID"] !== undefined || raw["TextBody"] !== undefined) {
-    const fromFull: string = raw["From"] ?? "";
-    const match = fromFull.match(/^(.*?)\s*<(.+)>$/) ?? null;
+  // Fields: From, FromName, Subject, TextBody, HtmlBody, MessageID
+  if ("MessageID" in raw || "TextBody" in raw || "HtmlBody" in raw) {
+    const { email, name } = parseFrom(raw["From"] ?? "");
     return {
-      from_name: raw["FromName"] ?? (match ? match[1].trim() : fromFull.split("@")[0]),
-      from_email: match ? match[2] : fromFull,
-      subject: raw["Subject"] ?? "(no subject)",
-      body: (raw["TextBody"] ?? raw["HtmlBody"] ?? "").trim(),
+      from_email: email,
+      from_name: raw["FromName"] || name,
+      subject: raw["Subject"] || "(no subject)",
+      body: stripHtml(raw["TextBody"] ?? raw["HtmlBody"] ?? ""),
       message_id: raw["MessageID"] ?? null,
     };
   }
 
   // --- SendGrid Inbound Parse ---
-  // { from, subject, text, html }
-  if (raw["from"] !== undefined && (raw["text"] !== undefined || raw["html"] !== undefined)) {
-    const fromFull: string = raw["from"] ?? "";
-    const match = fromFull.match(/^(.*?)\s*<(.+)>$/) ?? null;
+  // Fields: from, subject, text, html, headers
+  if ("from" in raw && ("text" in raw || "html" in raw)) {
+    const { email, name } = parseFrom(raw["from"] ?? "");
+    const msgIdMatch = (raw["headers"] ?? "").match(/Message-ID:\s*(<[^>]+>)/i);
     return {
-      from_name: match ? match[1].trim() : fromFull.split("@")[0],
-      from_email: match ? match[2] : fromFull,
-      subject: raw["subject"] ?? "(no subject)",
-      body: (raw["text"] ?? raw["html"] ?? "").trim(),
-      message_id: raw["headers"]?.match(/Message-ID:\s*(.+)/i)?.[1]?.trim() ?? null,
+      from_email: email,
+      from_name: name,
+      subject: raw["subject"] || "(no subject)",
+      body: stripHtml(raw["text"] ?? raw["html"] ?? ""),
+      message_id: msgIdMatch ? msgIdMatch[1] : null,
     };
   }
 
   // --- Mailgun ---
-  // { sender, subject, "body-plain", "body-html", "Message-Id" }
-  if (raw["sender"] !== undefined || raw["body-plain"] !== undefined) {
-    const fromFull: string = raw["from"] ?? raw["sender"] ?? "";
-    const match = fromFull.match(/^(.*?)\s*<(.+)>$/) ?? null;
+  // Fields: sender, from, subject, body-plain, body-html, Message-Id
+  if ("sender" in raw || "body-plain" in raw || "body-html" in raw) {
+    const fromStr = raw["from"] ?? raw["sender"] ?? "";
+    const { email, name } = parseFrom(fromStr);
     return {
-      from_name: match ? match[1].trim() : fromFull.split("@")[0],
-      from_email: match ? match[2] : fromFull,
-      subject: raw["subject"] ?? "(no subject)",
-      body: (raw["body-plain"] ?? raw["body-html"] ?? "").trim(),
-      message_id: raw["Message-Id"] ?? null,
+      from_email: email,
+      from_name: name,
+      subject: raw["subject"] || "(no subject)",
+      body: stripHtml(raw["body-plain"] ?? raw["body-html"] ?? ""),
+      message_id: raw["Message-Id"] ?? raw["message-id"] ?? null,
     };
   }
 
-  // --- Generic fallback ---
-  if (raw["from"] ?? raw["from_email"]) {
-    const fromFull: string = raw["from"] ?? raw["from_email"] ?? "";
-    const match = fromFull.match(/^(.*?)\s*<(.+)>$/) ?? null;
+  // --- Cloudflare / generic JSON ---
+  const fromField = raw["from"] ?? raw["from_email"] ?? raw["sender"] ?? "";
+  if (fromField) {
+    const { email, name } = parseFrom(fromField);
     return {
-      from_name: raw["from_name"] ?? (match ? match[1].trim() : fromFull.split("@")[0]),
-      from_email: match ? match[2] : fromFull,
-      subject: raw["subject"] ?? "(no subject)",
-      body: (raw["text"] ?? raw["body"] ?? raw["message"] ?? "").trim(),
-      message_id: raw["message_id"] ?? null,
+      from_email: email,
+      from_name: raw["from_name"] ?? name,
+      subject: raw["subject"] || "(no subject)",
+      body: stripHtml(raw["text"] ?? raw["body"] ?? raw["message"] ?? raw["html"] ?? ""),
+      message_id: raw["message_id"] ?? raw["Message-Id"] ?? null,
     };
   }
 
   return null;
 }
 
+/** Strip basic HTML tags and decode common entities for plain-text storage. */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
 
-  // Validate webhook secret (optional but strongly recommended)
+  // Optional webhook secret check
   const webhookSecret = Deno.env.get("INBOUND_EMAIL_SECRET");
   if (webhookSecret) {
     const provided =
       req.headers.get("x-webhook-secret") ??
+      req.headers.get("x-inbound-secret") ??
       new URL(req.url).searchParams.get("secret");
     if (provided !== webhookSecret) {
       return respond({ error: "Forbidden" }, 403);
@@ -125,15 +173,24 @@ Deno.serve(async (req: Request) => {
   let email: Awaited<ReturnType<typeof parseEmail>>;
   try {
     email = await parseEmail(req);
-  } catch {
+  } catch (err) {
+    console.error("parseEmail error:", err);
     return respond({ error: "Failed to parse request body" }, 400);
   }
 
-  if (!email || !email.from_email) {
-    return respond({ error: "Could not parse email payload" }, 400);
+  if (!email) {
+    return respond({ error: "Could not parse email payload — unknown format" }, 400);
   }
 
-  // Deduplicate: skip if this message_id was already processed
+  if (!isValidEmail(email.from_email)) {
+    console.error("Invalid from_email:", email.from_email);
+    return respond({ error: `Invalid sender email: ${email.from_email}` }, 400);
+  }
+
+  // Body fallback so NOT NULL is satisfied
+  const body = email.body.trim() || "(no message body)";
+
+  // Deduplicate by Message-ID
   if (email.message_id) {
     const { count } = await supabase
       .from("support_tickets")
@@ -144,7 +201,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Check if there's an open ticket for this sender in the last 7 days — thread it
+  // Thread onto an existing open ticket from same sender (within 7 days)
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: existing } = await supabase
     .from("support_tickets")
@@ -157,43 +214,45 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
 
   if (existing) {
-    // Thread the reply onto the existing ticket
-    await supabase.from("ticket_replies").insert({
+    const { error: replyErr } = await supabase.from("ticket_replies").insert({
       ticket_id: existing.id,
       author_name: email.from_name || email.from_email,
       author_role: "customer",
-      body: `**${email.subject}**\n\n${email.body}`,
+      body: `**Re: ${email.subject}**\n\n${body}`,
       is_internal: false,
     });
+    if (replyErr) console.error("reply insert error:", replyErr);
     return respond({ ok: true, ticket_id: existing.id, threaded: true });
   }
 
-  // Create a new ticket
-  const { data: ticket, error } = await supabase
+  // Create new ticket
+  const { data: ticket, error: ticketErr } = await supabase
     .from("support_tickets")
     .insert({
       subject: email.subject,
-      customer_name: email.from_name || email.from_email.split("@")[0],
+      customer_name: email.from_name,
       customer_email: email.from_email.toLowerCase(),
-      first_message: email.body,
+      first_message: body,
       source: "email",
-      email_message_id: email.message_id,
+      email_message_id: email.message_id ?? null,
     })
     .select("id")
     .single();
 
-  if (error || !ticket) {
-    return respond({ error: error?.message ?? "Failed to create ticket" }, 500);
+  if (ticketErr || !ticket) {
+    console.error("ticket insert error:", ticketErr);
+    return respond({ error: ticketErr?.message ?? "Failed to create ticket" }, 500);
   }
 
-  // Insert first reply
-  await supabase.from("ticket_replies").insert({
+  const { error: replyErr } = await supabase.from("ticket_replies").insert({
     ticket_id: ticket.id,
-    author_name: email.from_name || email.from_email.split("@")[0],
+    author_name: email.from_name,
     author_role: "customer",
-    body: email.body,
+    body,
     is_internal: false,
   });
+
+  if (replyErr) console.error("first reply insert error:", replyErr);
 
   return respond({ ok: true, ticket_id: ticket.id, threaded: false });
 });

@@ -606,6 +606,7 @@ export default function AdminSupport() {
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showEmailSetup, setShowEmailSetup] = useState(false);
+  const [newTicketBadge, setNewTicketBadge] = useState(false);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -618,7 +619,35 @@ export default function AdminSupport() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchAll();
+
+    // Real-time: new ticket inserted → prepend to list
+    const ticketSub = supabase
+      .channel('support_tickets_realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'support_tickets' },
+        (payload) => {
+          const t = payload.new as Ticket;
+          setTickets((prev) => [t, ...prev]);
+          setNewTicketBadge(true);
+          setTimeout(() => setNewTicketBadge(false), 4000);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'support_tickets' },
+        (payload) => {
+          const updated = payload.new as Ticket;
+          setTickets((prev) => prev.map((t) => t.id === updated.id ? updated : t));
+          setSelected((prev) => prev?.id === updated.id ? updated : prev);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(ticketSub); };
+  }, []);
 
   const filtered = tickets.filter(t => {
     if (statusFilter !== 'all' && t.status !== statusFilter) return false;
@@ -647,7 +676,14 @@ export default function AdminSupport() {
   };
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden relative">
+      {/* New ticket toast */}
+      {newTicketBadge && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-gray-900 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-xl animate-bounce-in">
+          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+          New ticket received
+        </div>
+      )}
       {/* ── Left: ticket list ── */}
       <div className={`flex flex-col border-r border-gray-200 bg-white ${selected ? 'hidden lg:flex lg:w-[380px]' : 'flex-1 lg:w-[380px] lg:flex-none'}`}>
         {/* Toolbar */}
