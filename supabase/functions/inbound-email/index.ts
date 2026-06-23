@@ -151,6 +151,19 @@ function stripHtml(html: string): string {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+
+  const url = new URL(req.url);
+
+  // GET → health check / connectivity test
+  if (req.method === "GET") {
+    return respond({
+      ok: true,
+      message: "inbound-email webhook is reachable",
+      hint: "POST a JSON or form-data email payload to this URL to create a support ticket.",
+      secret_required: !!Deno.env.get("INBOUND_EMAIL_SECRET"),
+    });
+  }
+
   if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
 
   // Optional webhook secret check
@@ -159,7 +172,7 @@ Deno.serve(async (req: Request) => {
     const provided =
       req.headers.get("x-webhook-secret") ??
       req.headers.get("x-inbound-secret") ??
-      new URL(req.url).searchParams.get("secret");
+      url.searchParams.get("secret");
     if (provided !== webhookSecret) {
       return respond({ error: "Forbidden" }, 403);
     }

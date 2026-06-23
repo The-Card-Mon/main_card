@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   Inbox, Search, RefreshCw, Plus, X, Send, Lock, MessageSquare,
-  Loader2, Filter, UserCheck, Settings, Mail, Copy, CheckCircle2,
-  ExternalLink, Zap,
+  Loader2, Filter, UserCheck, Mail, Copy, CheckCircle2,
+  Zap, AlertCircle, CheckCircle, FlaskConical,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -165,11 +165,42 @@ const PROVIDERS = [
 function EmailSetupModal({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const [activeProvider, setActiveProvider] = useState(0);
+  const [tab, setTab] = useState<'setup' | 'test'>('setup');
+
+  // Test state
+  const [testEmail, setTestEmail] = useState('test@example.com');
+  const [testName, setTestName] = useState('Test User');
+  const [testSubject, setTestSubject] = useState('Test Support Email');
+  const [testBody, setTestBody] = useState('Hello, I need help with my order.');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; status: number; body: unknown } | null>(null);
 
   const copy = () => {
     navigator.clipboard.writeText(WEBHOOK_URL);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const runTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: `${testName} <${testEmail}>`,
+          subject: testSubject,
+          text: testBody,
+        }),
+      });
+      const body = await res.json();
+      setTestResult({ ok: res.ok, status: res.status, body });
+    } catch (e: any) {
+      setTestResult({ ok: false, status: 0, body: { error: e.message } });
+    } finally {
+      setTesting(false);
+    }
   };
 
   const provider = PROVIDERS[activeProvider];
@@ -178,6 +209,7 @@ function EmailSetupModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
@@ -193,86 +225,186 @@ function EmailSetupModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100 px-6 flex-shrink-0">
+          {[
+            { id: 'setup' as const, label: 'Setup' },
+            { id: 'test' as const, label: 'Test Webhook', icon: FlaskConical },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex items-center gap-1.5 px-1 py-3 mr-5 text-xs font-semibold border-b-2 transition-colors ${
+                tab === id
+                  ? 'border-red-500 text-red-600'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {Icon && <Icon className="w-3.5 h-3.5" />}
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          {/* How it works */}
-          <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">How it works</p>
-            <div className="space-y-1.5">
-              {[
-                { icon: Mail, text: 'Customer emails support@thecardmon.com' },
-                { icon: Zap, text: 'Your email provider forwards it as a webhook POST' },
-                { icon: Inbox, text: 'A ticket is automatically created in this panel' },
-                { icon: MessageSquare, text: 'Reply from here — replies are tracked in the thread' },
-              ].map(({ icon: Icon, text }, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-2.5 h-2.5 text-gray-500" />
-                  </div>
-                  <p className="text-xs text-gray-600">{text}</p>
+          {tab === 'setup' && (
+            <>
+              {/* How it works */}
+              <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">How it works</p>
+                <div className="space-y-1.5">
+                  {[
+                    { icon: Mail, text: 'Customer emails support@thecardmon.com' },
+                    { icon: Zap, text: 'Your email provider forwards it as a webhook POST' },
+                    { icon: Inbox, text: 'A ticket is automatically created in this panel' },
+                    { icon: MessageSquare, text: 'Replies from the same sender thread onto the existing ticket' },
+                  ].map(({ icon: Icon, text }, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Icon className="w-2.5 h-2.5 text-gray-500" />
+                      </div>
+                      <p className="text-xs text-gray-600">{text}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {/* Webhook URL */}
-          <div>
-            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Webhook URL</p>
-            <div className="flex items-center gap-2 bg-gray-900 rounded-xl px-4 py-3">
-              <code className="flex-1 text-xs text-green-400 font-mono break-all">{WEBHOOK_URL}</code>
-              <button
-                onClick={copy}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg transition-colors flex-shrink-0"
-              >
-                {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 mt-1.5">
-              Optionally protect with a secret: append <code className="bg-gray-100 px-1 rounded">?secret=YOUR_SECRET</code> and set{' '}
-              <code className="bg-gray-100 px-1 rounded">INBOUND_EMAIL_SECRET</code> in your Supabase edge function secrets.
-            </p>
-          </div>
+              {/* Webhook URL */}
+              <div>
+                <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Webhook URL</p>
+                <div className="flex items-center gap-2 bg-gray-900 rounded-xl px-4 py-3">
+                  <code className="flex-1 text-xs text-green-400 font-mono break-all">{WEBHOOK_URL}</code>
+                  <button
+                    onClick={copy}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg transition-colors flex-shrink-0"
+                  >
+                    {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  To verify it's reachable, visit the URL in your browser — it will return a health-check response.
+                </p>
+              </div>
 
-          {/* Provider tabs */}
-          <div>
-            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Setup by Provider</p>
-            <div className="flex gap-1.5 flex-wrap mb-3">
-              {PROVIDERS.map((p, i) => (
+              {/* Provider tabs */}
+              <div>
+                <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Setup by Provider</p>
+                <div className="flex gap-1.5 flex-wrap mb-3">
+                  {PROVIDERS.map((p, i) => (
+                    <button
+                      key={p.name}
+                      onClick={() => setActiveProvider(i)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        activeProvider === i ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+                <div className={`rounded-xl border ${provider.border} ${provider.bg} p-4`}>
+                  <p className={`text-xs font-bold ${provider.color} mb-3`}>{provider.name} Setup</p>
+                  <ol className="space-y-2">
+                    {provider.steps.map((step, i) => (
+                      <li key={i} className="flex gap-2.5">
+                        <span className={`w-5 h-5 rounded-full border ${provider.border} flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${provider.color} bg-white`}>
+                          {i + 1}
+                        </span>
+                        <p className="text-xs text-gray-700 leading-relaxed">{step}</p>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab === 'test' && (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                <p className="text-xs font-semibold text-blue-800 mb-0.5">Live webhook tester</p>
+                <p className="text-xs text-blue-700">
+                  Send a simulated email payload directly to the webhook. If successful, a new ticket will appear in the list immediately.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sender Name</label>
+                    <input
+                      value={testName}
+                      onChange={e => setTestName(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sender Email</label>
+                    <input
+                      type="email"
+                      value={testEmail}
+                      onChange={e => setTestEmail(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Subject</label>
+                  <input
+                    value={testSubject}
+                    onChange={e => setTestSubject(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Message Body</label>
+                  <textarea
+                    value={testBody}
+                    onChange={e => setTestBody(e.target.value)}
+                    rows={3}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
                 <button
-                  key={p.name}
-                  onClick={() => setActiveProvider(i)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    activeProvider === i ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                  }`}
+                  onClick={runTest}
+                  disabled={testing || !testEmail || !testSubject}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
                 >
-                  {p.name}
+                  {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <FlaskConical className="w-4 h-4" />}
+                  {testing ? 'Sending...' : 'Send Test Email'}
                 </button>
-              ))}
-            </div>
-            <div className={`rounded-xl border ${provider.border} ${provider.bg} p-4`}>
-              <p className={`text-xs font-bold ${provider.color} mb-3`}>{provider.name} Setup</p>
-              <ol className="space-y-2">
-                {provider.steps.map((step, i) => (
-                  <li key={i} className="flex gap-2.5">
-                    <span className={`w-5 h-5 rounded-full border ${provider.border} flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${provider.color} bg-white`}>
-                      {i + 1}
-                    </span>
-                    <p className="text-xs text-gray-700 leading-relaxed">{step}</p>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </div>
+              </div>
 
-          {/* Supported formats note */}
-          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-            <p className="text-xs font-semibold text-blue-800 mb-1">Supported payload formats</p>
-            <p className="text-xs text-blue-700">
-              The webhook automatically detects Postmark, SendGrid, Mailgun, and generic JSON/form-data payloads.
-              Duplicate emails (same Message-ID) are silently skipped. Replies from the same sender within 7 days
-              are threaded onto the existing open ticket.
-            </p>
-          </div>
+              {testResult && (
+                <div className={`rounded-xl border p-4 ${testResult.ok ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    {testResult.ok
+                      ? <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      : <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                    }
+                    <p className={`text-xs font-bold ${testResult.ok ? 'text-green-800' : 'text-red-800'}`}>
+                      HTTP {testResult.status} — {testResult.ok ? 'Success' : 'Error'}
+                    </p>
+                  </div>
+                  <pre className={`text-xs rounded-lg p-3 font-mono overflow-auto max-h-32 ${testResult.ok ? 'bg-green-100 text-green-900' : 'bg-red-100 text-red-900'}`}>
+                    {JSON.stringify(testResult.body, null, 2)}
+                  </pre>
+                  {testResult.ok && (
+                    <p className="text-xs text-green-700 mt-2 font-medium">
+                      Ticket created! Switch to the Open tickets tab — it should appear instantly.
+                    </p>
+                  )}
+                  {!testResult.ok && (testResult.body as any)?.error === 'Could not parse email payload — unknown format' && (
+                    <p className="text-xs text-red-700 mt-2">
+                      The webhook couldn't parse the payload. Your email provider may be sending a different format.
+                      Check your provider's inbound webhook documentation for the exact fields it sends.
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0">
@@ -837,3 +969,6 @@ export default function AdminSupport() {
     </div>
   );
 }
+
+
+export default AdminSupport
