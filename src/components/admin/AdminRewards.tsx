@@ -110,7 +110,7 @@ export default function AdminRewards() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Total $PKB Issued', value: totalIssued.toLocaleString(), sub: `≈ $${(totalIssued / 10).toFixed(2)} in rewards given`, icon: Coins, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-          { label: 'Total $PKB Redeemed', value: totalRedeemed.toLocaleString(), sub: `≈ $${(totalRedeemed / 10).toFixed(2)} in discounts`, icon: TrendingDown, color: 'text-red-500', bg: 'bg-red-50' },
+          { label: 'Total $PKB Spent (Mystery Boxes)', value: totalRedeemed.toLocaleString(), sub: `across all mystery box openings`, icon: TrendingDown, color: 'text-red-500', bg: 'bg-red-50' },
           { label: 'Active Holders', value: activeHolders, sub: `${balances.length} total customers tracked`, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
         ].map(({ label, value, sub, icon: Icon, color, bg }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-5">
@@ -259,8 +259,8 @@ export default function AdminRewards() {
       {/* Earn/redeem info */}
       <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-5 py-4">
         <p className="text-xs font-semibold text-yellow-800 mb-1">Rates</p>
-        <p className="text-xs text-yellow-700">Earn rate: <strong>$1 spent = 10 $PKB</strong> &nbsp;·&nbsp; Redeem rate: <strong>10 $PKB = $1 off</strong></p>
-        <p className="text-xs text-yellow-600 mt-1">Points are awarded automatically after each completed order and can be redeemed at checkout.</p>
+        <p className="text-xs text-yellow-700">Earn rate: <strong>$1 spent = 10 $PKB</strong></p>
+        <p className="text-xs text-yellow-600 mt-1">Points are awarded automatically after each completed order and can only be spent on Mystery Boxes. They have no cash value and cannot be redeemed for discounts.</p>
       </div>
     </div>
   );

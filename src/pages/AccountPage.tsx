@@ -460,7 +460,7 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                       {rewardsLoading ? '—' : Math.max(0, pkbBalance).toLocaleString()}
                     </p>
                     <p className="text-yellow-100 font-semibold text-lg">$PKB</p>
-                    <p className="text-yellow-200 text-sm mt-1">≈ ${(Math.max(0, pkbBalance) / 10).toFixed(2)} off your next order</p>
+                    <p className="text-yellow-200 text-sm mt-1">Spend on Mystery Boxes — no cash value</p>
                     <div className="mt-4 flex items-center gap-3 flex-wrap">
                       <div className="flex items-center gap-1.5 bg-white/15 border border-white/20 rounded-lg px-3 py-1.5">
                         <TrendingUp className="w-3.5 h-3.5 text-yellow-100" />
@@ -468,7 +468,7 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                       </div>
                       <div className="flex items-center gap-1.5 bg-white/15 border border-white/20 rounded-lg px-3 py-1.5">
                         <Gift className="w-3.5 h-3.5 text-yellow-100" />
-                        <span className="text-xs font-semibold text-yellow-100">Redeem at checkout</span>
+                        <span className="text-xs font-semibold text-yellow-100">Spend on Mystery Boxes</span>
                       </div>
                       <button
                         onClick={() => onNavigate('mystery-boxes')}
@@ -486,7 +486,7 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                   {[
                     { step: '1', title: 'Shop & earn', desc: 'Get 10 $PKB for every $1 you spend on any order.' },
                     { step: '2', title: 'Accumulate points', desc: 'Points never expire. Stack them up over time.' },
-                    { step: '3', title: 'Redeem at checkout', desc: 'Every 10 $PKB = $1 off. Apply as many as you like.' },
+                    { step: '3', title: 'Open Mystery Boxes', desc: 'Spend your $PKB on Bronze, Silver, or Gold Mystery Boxes. Points have no cash value.' },
                   ].map(({ step, title, desc }) => (
                     <div key={step} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                       <div className="w-7 h-7 rounded-lg bg-yellow-100 text-yellow-700 font-black text-sm flex items-center justify-center mb-3">
@@ -509,8 +509,7 @@ export default function AccountPage({ onNavigate, initialTab = 'overview' }: Acc
                     <div className="text-center py-12">
                       <Coins className="w-8 h-8 text-gray-200 mx-auto mb-3" />
                       <p className="text-sm text-gray-400 font-medium">No transactions yet</p>
-                      <p className="text-xs text-gray-300 mt-1">Make a purchase to earn your first $PKB!</p>
-                    </div>
+                      <p className="text-xs text-gray-300 mt-1">Make a purchase to earn your first $PKB!</p>                    </div>
                   ) : (
                     <div className="divide-y divide-gray-50">
                       {pkbLedger.map((row) => {
