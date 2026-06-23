@@ -120,7 +120,8 @@ Deno.serve(async (req: Request) => {
               carrierCode: carrier.code,
             });
             if (!ok || !Array.isArray(data)) return [];
-            return data as unknown[];
+            // ShipStation omits carrierCode from rate responses — inject it back
+            return (data as Record<string, unknown>[]).map((r) => ({ ...r, carrierCode: carrier.code }));
           } catch {
             return [];
           }
