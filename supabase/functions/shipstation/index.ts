@@ -37,18 +37,12 @@ Deno.serve(async (req: Request) => {
       .select("role")
       .eq("id", user.id)
       .single();
-    if (!profile || (profile.role !== "admin" && profile.role !== "staff")) {
-      return respond({ error: "Forbidden" }, 403);
-    }
+
+    const isAdminOrStaff = profile?.role === "admin" || profile?.role === "staff";
 
     const apiKey = Deno.env.get("SHIPSTATION_API_KEY") ?? "S15/7VgfyANdgMB5eX4O0Bd02ysHZRtxB+Qt85PyB9k";
-    if (!apiKey) {
-      return respond({ error: "SHIPSTATION_API_KEY not configured." }, 503);
-    }
+    if (!apiKey) return respond({ error: "SHIPSTATION_API_KEY not configured." }, 503);
 
-    // ShipStation Basic auth: base64(apiKey:apiSecret).
-    // If the stored value already contains ":" it's "key:secret" — encode it.
-    // Otherwise encode it as "key:" (key only, empty secret).
     const ssAuth = `Basic ${btoa(apiKey.includes(":") ? apiKey : `${apiKey}:`)}`;
 
     const { action, ...payload } = await req.json() as { action: string; [key: string]: unknown };
@@ -69,21 +63,13 @@ Deno.serve(async (req: Request) => {
         data = await res.json();
       } else {
         const text = await res.text();
-        // ShipStation returned non-JSON (likely HTML error page)
         const preview = text.replace(/<[^>]*>/g, "").trim().slice(0, 200);
         data = { message: preview || `HTTP ${res.status}` };
       }
       return { ok: res.ok, status: res.status, data };
     };
 
-    // ── action: list_carriers ──────────────────────────────────────────────────
-    if (action === "list_carriers") {
-      const { ok, data } = await ssFetch("/carriers");
-      if (!ok) return respond({ error: data?.message ?? "Failed to fetch carriers", details: data }, 502);
-      return respond({ carriers: Array.isArray(data) ? data : [] });
-    }
-
-    // ── action: rates ──────────────────────────────────────────────────────────
+    // ── action: rates — available to any authenticated user (used at checkout) ──
     if (action === "rates") {
       const {
         toCity = "",
@@ -118,8 +104,6 @@ Deno.serve(async (req: Request) => {
         residential: true,
       };
 
-      // getrates requires a carrierCode — fetch all connected carriers first,
-      // then request rates for each in parallel.
       const { ok: cOk, data: cData } = await ssFetch("/carriers");
       if (!cOk) return respond({ error: (cData as { message?: string })?.message ?? "Failed to fetch carriers", details: cData }, 502);
 
@@ -146,7 +130,17 @@ Deno.serve(async (req: Request) => {
       return respond({ rates: rateResults.flat() });
     }
 
-    // ── action: create_label ───────────────────────────────────────────────────
+    // All other actions require admin or staff
+    if (!isAdminOrStaff) return respond({ error: "Forbidden" }, 403);
+
+    // ── action: list_carriers ─────────────────────────────────────────────────
+    if (action === "list_carriers") {
+      const { ok, data } = await ssFetch("/carriers");
+      if (!ok) return respond({ error: (data as { message?: string })?.message ?? "Failed to fetch carriers", details: data }, 502);
+      return respond({ carriers: Array.isArray(data) ? data : [] });
+    }
+
+    // ── action: create_label ──────────────────────────────────────────────────
     if (action === "create_label") {
       const {
         order_id,
@@ -197,34 +191,23 @@ Deno.serve(async (req: Request) => {
         weight: { value: weightOz, units: "ounces" },
         dimensions: { units: "inches", length: 6.5, width: 4.5, height: 0.5 },
         shipFrom: {
-          name: fromName,
-          street1: fromStreet1,
-          city: fromCity,
-          state: fromState,
-          postalCode: fromPostalCode,
-          country: fromCountry,
-          phone: fromPhone,
+          name: fromName, street1: fromStreet1, city: fromCity,
+          state: fromState, postalCode: fromPostalCode, country: fromCountry, phone: fromPhone,
         },
         shipTo: {
-          name: toName,
-          street1: toStreet1 ?? "",
-          city: toCity ?? "",
-          state: toState ?? "",
-          postalCode: toPostalCode ?? "",
-          country: toCountry,
-          residential: true,
+          name: toName, street1: toStreet1 ?? "", city: toCity ?? "",
+          state: toState ?? "", postalCode: toPostalCode ?? "", country: toCountry, residential: true,
         },
         confirmation: "none",
         testLabel: false,
       };
 
       const { ok, data } = await ssFetch("/shipments/createlabel", "POST", body);
-      if (!ok) return respond({ error: data?.message ?? "Failed to create label", details: data }, 502);
+      if (!ok) return respond({ error: (data as { message?: string })?.message ?? "Failed to create label", details: data }, 502);
 
-      // Update order with tracking info
-      if (order_id && data?.trackingNumber) {
+      if (order_id && (data as { trackingNumber?: string })?.trackingNumber) {
         await supabase.from("orders").update({
-          tracking_number: data.trackingNumber,
+          tracking_number: (data as { trackingNumber: string }).trackingNumber,
           tracking_carrier: carrierCode,
           shipped_at: new Date().toISOString(),
           status: "processing",
@@ -234,12 +217,12 @@ Deno.serve(async (req: Request) => {
       return respond({ label: data });
     }
 
-    // ── action: track ──────────────────────────────────────────────────────────
+    // ── action: track ─────────────────────────────────────────────────────────
     if (action === "track") {
       const { tracking_number } = payload as { tracking_number?: string };
       const { ok, data } = await ssFetch(`/shipments?trackingNumber=${encodeURIComponent(tracking_number ?? "")}`);
-      if (!ok) return respond({ error: data?.message ?? "Tracking lookup failed" }, 502);
-      return respond({ shipments: data?.shipments ?? data });
+      if (!ok) return respond({ error: (data as { message?: string })?.message ?? "Tracking lookup failed" }, 502);
+      return respond({ shipments: (data as { shipments?: unknown })?.shipments ?? data });
     }
 
     return respond({ error: `Unknown action: ${action}` }, 400);

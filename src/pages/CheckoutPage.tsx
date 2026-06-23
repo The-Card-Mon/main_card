@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -6,13 +6,14 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { ArrowLeft, ArrowRight, CheckCircle, Lock, Package, ShoppingBag, Coins, TrendingUp, X, Zap, ExternalLink, Truck, Tag, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle, Lock, Package, ShoppingBag, Coins, TrendingUp, X, Zap, ExternalLink, Truck, Tag, Check, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { shortAddress } from '../lib/pkb';
 
 const STRIPE_KEY = 'pk_live_51TgD1JKG4lPUYddupc0dnUE02tO1ZVrI4aBZpH7XvyGSgyAb0BDPldF6CtJUgEUKrghu65kTuVYK48ZLDrezbdbd000rpgHH4Z';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
 interface ShippingData {
   firstName: string;
@@ -27,14 +28,11 @@ interface ShippingData {
   country: string;
 }
 
-interface ShippingMethod {
-  id: string;
-  name: string;
-  description: string | null;
-  price: number;
-  estimated_days_min: number;
-  estimated_days_max: number;
-  carrier: string | null;
+interface LiveShippingRate {
+  serviceCode: string;
+  carrierCode: string;
+  serviceName: string;
+  cost: number;
 }
 
 const EMPTY_SHIPPING: ShippingData = {
@@ -259,24 +257,29 @@ interface ShippingFormProps {
   onContinue: () => void;
   loading: boolean;
   onNavigate: (page: string) => void;
-  shippingMethods: ShippingMethod[];
-  selectedMethodId: string;
-  onSelectMethod: (id: string) => void;
+  liveRates: LiveShippingRate[];
+  selectedRate: LiveShippingRate | null;
+  onSelectRate: (rate: LiveShippingRate) => void;
+  loadingRates: boolean;
+  ratesError: string | null;
+  onRetryRates: () => void;
 }
 
-function ShippingForm({ shipping, onChange, onContinue, loading, onNavigate, shippingMethods, selectedMethodId, onSelectMethod }: ShippingFormProps) {
+function ShippingForm({ shipping, onChange, onContinue, loading, onNavigate, liveRates, selectedRate, onSelectRate, loadingRates, ratesError, onRetryRates }: ShippingFormProps) {
   const set = (field: keyof ShippingData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...shipping, [field]: e.target.value });
 
-  const valid =
+  const addressFilled =
     shipping.firstName.trim() &&
     shipping.lastName.trim() &&
     shipping.email.trim() &&
     shipping.address1.trim() &&
     shipping.city.trim() &&
     shipping.state.trim() &&
-    shipping.zip.trim() &&
-    (shippingMethods.length === 0 || selectedMethodId);
+    shipping.zip.trim();
+
+  const ratesReady = !loadingRates && (liveRates.length === 0 || selectedRate !== null);
+  const valid = addressFilled && ratesReady;
 
   const fieldClass =
     'w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white transition-colors placeholder-gray-400';
@@ -365,25 +368,52 @@ function ShippingForm({ shipping, onChange, onContinue, loading, onNavigate, shi
         </div>
       </div>
 
-      {/* Shipping method selection */}
-      {shippingMethods.length > 0 && (
-        <div className="mt-5">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Shipping Method</p>
+      {/* Shipping rate selection */}
+      <div className="mt-5">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Shipping Method</p>
+
+        {/* Loading */}
+        {loadingRates && (
+          <div className="flex items-center gap-2.5 px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-500">
+            <Loader2 className="w-4 h-4 animate-spin text-red-500 flex-shrink-0" />
+            Fetching live shipping rates...
+          </div>
+        )}
+
+        {/* Error */}
+        {!loadingRates && ratesError && (
+          <div className="px-4 py-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>Could not fetch rates: {ratesError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={onRetryRates}
+              className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-900"
+            >
+              <RefreshCw className="w-3 h-3" /> Retry
+            </button>
+          </div>
+        )}
+
+        {/* Waiting for address */}
+        {!loadingRates && !ratesError && liveRates.length === 0 && (shipping.zip.length < 5 || shipping.state.length < 2) && (
+          <p className="text-sm text-gray-400 px-1">Enter your ZIP code and state to see live shipping rates.</p>
+        )}
+
+        {/* Rates list */}
+        {!loadingRates && liveRates.length > 0 && (
           <div className="space-y-2">
-            {shippingMethods.map((method) => {
-              const days = method.estimated_days_min === method.estimated_days_max
-                ? `${method.estimated_days_min} day${method.estimated_days_min === 1 ? '' : 's'}`
-                : `${method.estimated_days_min}–${method.estimated_days_max} days`;
-              const selected = selectedMethodId === method.id;
+            {liveRates.map((rate) => {
+              const selected = selectedRate?.serviceCode === rate.serviceCode && selectedRate?.carrierCode === rate.carrierCode;
               return (
                 <button
-                  key={method.id}
+                  key={`${rate.carrierCode}-${rate.serviceCode}`}
                   type="button"
-                  onClick={() => onSelectMethod(method.id)}
+                  onClick={() => onSelectRate(rate)}
                   className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left transition-all ${
-                    selected
-                      ? 'border-red-500 bg-red-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
+                    selected ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300'
                   }`}
                 >
                   <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selected ? 'border-red-500' : 'border-gray-300'}`}>
@@ -391,23 +421,18 @@ function ShippingForm({ shipping, onChange, onContinue, loading, onNavigate, shi
                   </div>
                   <Truck className={`w-4 h-4 flex-shrink-0 ${selected ? 'text-red-500' : 'text-gray-400'}`} />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold ${selected ? 'text-red-700' : 'text-gray-800'}`}>{method.name}</p>
-                    {method.description && (
-                      <p className="text-xs text-gray-500 mt-0.5">{method.description}</p>
-                    )}
+                    <p className={`text-sm font-semibold ${selected ? 'text-red-700' : 'text-gray-800'}`}>{rate.serviceName}</p>
+                    <p className="text-xs text-gray-400 uppercase">{rate.carrierCode}</p>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className={`text-sm font-bold ${selected ? 'text-red-600' : 'text-gray-900'}`}>
-                      {Number(method.price) === 0 ? 'Free' : `$${Number(method.price).toFixed(2)}`}
-                    </p>
-                    <p className="text-xs text-gray-400">{days}</p>
-                  </div>
+                  <p className={`text-sm font-bold flex-shrink-0 ${selected ? 'text-red-600' : 'text-gray-900'}`}>
+                    {rate.cost === 0 ? 'Free' : `$${rate.cost.toFixed(2)}`}
+                  </p>
                 </button>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <button
         onClick={onContinue}
@@ -651,24 +676,76 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   const [applyingDiscount, setApplyingDiscount] = useState(false);
   const [discountError, setDiscountError] = useState<string | null>(null);
 
-  // Shipping methods
-  const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([]);
-  const [selectedMethodId, setSelectedMethodId] = useState('');
+  // Shipping — live ShipStation rates
+  const [liveRates, setLiveRates] = useState<LiveShippingRate[]>([]);
+  const [selectedRate, setSelectedRate] = useState<LiveShippingRate | null>(null);
+  const [loadingRates, setLoadingRates] = useState(false);
+  const [ratesError, setRatesError] = useState<string | null>(null);
+  // Ref to track last-fetched address so retry can re-trigger
+  const ratesFetchKey = useRef('');
 
-  useEffect(() => {
-    supabase
-      .from('shipping_methods')
-      .select('id, name, description, price, estimated_days_min, estimated_days_max, carrier')
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true })
-      .then(({ data }) => {
-        const methods = (data as ShippingMethod[]) ?? [];
-        setShippingMethods(methods);
-        if (methods.length > 0 && !selectedMethodId) {
-          setSelectedMethodId(methods[0].id);
-        }
+  const fetchRates = async (zip: string, state: string, city: string, country: string) => {
+    setLoadingRates(true);
+    setRatesError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/shipstation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          action: 'rates',
+          toCity: city,
+          toState: state.toUpperCase(),
+          toPostalCode: zip,
+          toCountry: country || 'US',
+          items: items.map((i) => ({ quantity: i.quantity })),
+        }),
       });
-  }, []);
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setRatesError(data.error ?? 'Failed to fetch shipping rates');
+        setLiveRates([]);
+        setSelectedRate(null);
+      } else {
+        const rates: LiveShippingRate[] = ((data.rates ?? []) as { serviceCode: string; carrierCode: string; serviceName: string; shipmentCost: number; otherCost: number }[])
+          .map((r) => ({ serviceCode: r.serviceCode, carrierCode: r.carrierCode, serviceName: r.serviceName, cost: Math.round((r.shipmentCost + r.otherCost) * 100) / 100 }))
+          .sort((a, b) => a.cost - b.cost);
+        setLiveRates(rates);
+        setSelectedRate((prev) => {
+          if (prev) {
+            const match = rates.find((r) => r.serviceCode === prev.serviceCode && r.carrierCode === prev.carrierCode);
+            if (match) return match;
+          }
+          return rates[0] ?? null;
+        });
+      }
+    } catch (err) {
+      setRatesError((err as Error).message);
+    } finally {
+      setLoadingRates(false);
+    }
+  };
+
+  // Auto-fetch rates when ZIP (5 chars) + state (2 chars) are ready
+  useEffect(() => {
+    const zip = shipping.zip.trim();
+    const state = shipping.state.trim();
+    if (zip.length < 5 || state.length < 2) {
+      setLiveRates([]);
+      setSelectedRate(null);
+      setRatesError(null);
+      setLoadingRates(false);
+      return;
+    }
+    const key = `${zip}-${state}-${shipping.city}-${shipping.country}`;
+    if (key === ratesFetchKey.current) return;
+    ratesFetchKey.current = key;
+
+    setLoadingRates(true);
+    const timer = setTimeout(() => fetchRates(zip, state, shipping.city, shipping.country), 800);
+    return () => clearTimeout(timer);
+  }, [shipping.zip, shipping.state, shipping.city, shipping.country]);
 
   useEffect(() => {
     if (!user) return;
@@ -683,8 +760,7 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   }, [user]);
 
   const pkbDiscount = pkbToApply / 10;
-  const selectedMethod = shippingMethods.find((m) => m.id === selectedMethodId) ?? null;
-  const shippingCost = selectedMethod ? Number(selectedMethod.price) : 0;
+  const shippingCost = selectedRate?.cost ?? 0;
   const finalTotal = Math.max(totalPrice + shippingCost - discountAmount - pkbDiscount, 0);
   const pkbEarnPreview = Math.floor(finalTotal * 10);
 
@@ -785,7 +861,8 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
           pkb_discount: pkbToApply,
           shipping_state: shipping.state,
           shipping_country: shipping.country,
-          shipping_method_id: selectedMethodId || null,
+          shipping_cost_cents: Math.round(shippingCost * 100),
+          shipping_method_name: selectedRate?.serviceName ?? null,
           discount_code: appliedDiscountCode ?? undefined,
         }),
       });
@@ -828,8 +905,8 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
           total: chargedTotal || finalTotal,
           tax_amount: taxAmount,
           shipping_address: shippingAddress,
-          shipping_method_id: selectedMethodId || null,
-          shipping_method_name: selectedMethod?.name ?? null,
+          shipping_method_id: null,
+          shipping_method_name: selectedRate?.serviceName ?? null,
           shipping_cost: shippingCost,
           status: 'pending',
           stripe_payment_intent_id: paymentIntentId ?? null,
@@ -922,9 +999,15 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
                 onContinue={handleContinueToPayment}
                 loading={loadingIntent}
                 onNavigate={onNavigate}
-                shippingMethods={shippingMethods}
-                selectedMethodId={selectedMethodId}
-                onSelectMethod={setSelectedMethodId}
+                liveRates={liveRates}
+                selectedRate={selectedRate}
+                onSelectRate={setSelectedRate}
+                loadingRates={loadingRates}
+                ratesError={ratesError}
+                onRetryRates={() => {
+                  ratesFetchKey.current = '';
+                  fetchRates(shipping.zip.trim(), shipping.state.trim(), shipping.city, shipping.country);
+                }}
               />
             )}
             {step === 'payment' && clientSecret && stripeOptions && (
@@ -951,7 +1034,7 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
               taxAmount={taxAmount}
               taxRate={taxRate}
               shippingCost={shippingCost}
-              shippingMethodName={selectedMethod?.name}
+              shippingMethodName={selectedRate?.serviceName}
               discountCode={discountCodeInput}
               onDiscountCodeChange={setDiscountCodeInput}
               onApplyDiscount={handleApplyDiscount}

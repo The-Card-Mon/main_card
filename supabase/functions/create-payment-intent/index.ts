@@ -33,21 +33,35 @@ Deno.serve(async (req: Request) => {
     );
     if (authError || !user) return respond({ error: "Unauthorized" }, 401);
 
-    const { items, pkb_discount = 0, shipping_state = "", shipping_country = "US", shipping_method_id = null, discount_code = null } = await req.json() as {
+    const {
+      items,
+      pkb_discount = 0,
+      shipping_state = "",
+      shipping_country = "US",
+      shipping_method_id = null,
+      shipping_cost_cents = null,
+      shipping_method_name: clientShippingName = null,
+      discount_code = null,
+    } = await req.json() as {
       items: { product_id: string; quantity: number }[];
       pkb_discount?: number;
       shipping_state?: string;
       shipping_country?: string;
       shipping_method_id?: string | null;
+      shipping_cost_cents?: number | null;
+      shipping_method_name?: string | null;
       discount_code?: string | null;
     };
 
     if (!items || items.length === 0) return respond({ error: "No items provided" }, 400);
 
-    // Fetch shipping method cost server-side
+    // Resolve shipping cost — prefer direct cents (ShipStation live rate), fall back to DB method
     let shippingCents = 0;
     let shippingMethodName: string | null = null;
-    if (shipping_method_id) {
+    if (shipping_cost_cents !== null && shipping_cost_cents !== undefined) {
+      shippingCents = Math.round(Number(shipping_cost_cents));
+      shippingMethodName = clientShippingName ?? null;
+    } else if (shipping_method_id) {
       const { data: method } = await supabase
         .from("shipping_methods")
         .select("name, price, is_active")
