@@ -10,41 +10,30 @@ interface HomePageProps {
 }
 
 const TYPE_ICONS: Record<string, string> = {
-  Fire: '🔥',
-  Water: '💧',
-  Grass: '🌿',
-  Electric: '⚡',
-  Psychic: '🔮',
-  Dragon: '🐉',
-  Fighting: '🥊',
-  Darkness: '🌑',
+  Fire: '🔥', Water: '💧', Grass: '🌿', Electric: '⚡',
+  Psychic: '🔮', Dragon: '🐉', Fighting: '🥊', Darkness: '🌑',
 };
 
-const TYPE_GLOW: Record<string, string> = {
-  Fire:     'rgba(251,146,60,0.55)',
-  Water:    'rgba(96,165,250,0.55)',
-  Grass:    'rgba(74,222,128,0.55)',
-  Electric: 'rgba(250,204,21,0.60)',
-  Psychic:  'rgba(232,121,249,0.55)',
-  Dragon:   'rgba(239,68,68,0.50)',
-  Fighting: 'rgba(217,119,6,0.55)',
-  Darkness: 'rgba(75,85,99,0.65)',
+const TYPE_COLOR: Record<string, { ring: string; icon: string; label: string }> = {
+  Fire:     { ring: 'ring-orange-200', icon: 'bg-orange-100', label: 'text-orange-600' },
+  Water:    { ring: 'ring-blue-200',   icon: 'bg-blue-100',   label: 'text-blue-600' },
+  Grass:    { ring: 'ring-green-200',  icon: 'bg-green-100',  label: 'text-green-600' },
+  Electric: { ring: 'ring-yellow-200', icon: 'bg-yellow-100', label: 'text-yellow-600' },
+  Psychic:  { ring: 'ring-purple-200', icon: 'bg-purple-100', label: 'text-purple-600' },
+  Dragon:   { ring: 'ring-red-200',    icon: 'bg-red-100',    label: 'text-red-600' },
+  Fighting: { ring: 'ring-amber-200',  icon: 'bg-amber-100',  label: 'text-amber-700' },
+  Darkness: { ring: 'ring-gray-300',   icon: 'bg-gray-100',   label: 'text-gray-700' },
 };
 
-const TYPE_BG: Record<string, string> = {
-  Fire:     'linear-gradient(135deg,#f97316 0%,#dc2626 100%)',
-  Water:    'linear-gradient(135deg,#38bdf8 0%,#1d4ed8 100%)',
-  Grass:    'linear-gradient(135deg,#4ade80 0%,#16a34a 100%)',
-  Electric: 'linear-gradient(135deg,#fde047 0%,#f59e0b 100%)',
-  Psychic:  'linear-gradient(135deg,#f0abfc 0%,#a855f7 100%)',
-  Dragon:   'linear-gradient(135deg,#f87171 0%,#ea580c 100%)',
-  Fighting: 'linear-gradient(135deg,#fb923c 0%,#92400e 100%)',
-  Darkness: 'linear-gradient(135deg,#6b7280 0%,#111827 100%)',
-};
-
-const TYPE_LABEL_COLOR: Record<string, string> = {
-  Electric: 'text-amber-900',
-  Grass:    'text-green-900',
+const TYPE_TAGLINE: Record<string, string> = {
+  Fire: 'Charizard, Arcanine & more',
+  Water: 'Blastoise, Gyarados & more',
+  Grass: 'Venusaur, Leafeon & more',
+  Electric: 'Pikachu, Raichu & more',
+  Psychic: 'Mewtwo, Alakazam & more',
+  Dragon: 'Dragonite, Rayquaza & more',
+  Fighting: 'Machamp, Lucario & more',
+  Darkness: 'Umbreon, Darkrai & more',
 };
 
 
@@ -189,55 +178,46 @@ export default function HomePage({ onNavigate, onViewProduct }: HomePageProps) {
       </section>
 
       {/* Browse by Type */}
-      <section className="py-20 bg-gray-950 overflow-hidden">
+      <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <p className="text-xs font-bold text-red-400 uppercase tracking-[0.2em] mb-2">Energy Types</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-white" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
-              Browse by Type
-            </h2>
-            <p className="text-gray-400 mt-2 text-sm">Find cards by their elemental energy</p>
+          <div className="flex items-end justify-between mb-8">
+            <div>
+              <p className="text-xs font-semibold text-red-500 uppercase tracking-widest mb-1">Energy Types</p>
+              <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
+                Browse by Type
+              </h2>
+            </div>
+            <button
+              onClick={() => onNavigate('catalog')}
+              className="text-red-600 hover:text-red-700 text-sm font-semibold flex items-center gap-1 group"
+            >
+              All cards
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+            </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {['Fire', 'Water', 'Grass', 'Electric', 'Psychic', 'Dragon', 'Fighting', 'Darkness'].map((type) => (
-              <button
-                key={type}
-                onClick={() => onNavigate(`catalog?type=${type}`)}
-                className="group relative rounded-2xl overflow-hidden aspect-square flex flex-col items-center justify-center transition-all duration-300 hover:scale-[1.04] hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-white/30"
-                style={{ background: TYPE_BG[type] }}
-              >
-                {/* Radial glow in center */}
-                <div
-                  className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                  style={{ background: `radial-gradient(ellipse at 50% 60%, ${TYPE_GLOW[type]} 0%, transparent 70%)` }}
-                />
-                {/* Shine sweep */}
-                <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                {/* Subtle dark vignette edges */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10" />
-
-                <div className="relative flex flex-col items-center gap-2 px-4">
-                  <span
-                    className="text-5xl sm:text-6xl drop-shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
-                    style={{ filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.4))' }}
-                  >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {(['Fire', 'Water', 'Grass', 'Electric', 'Psychic', 'Dragon', 'Fighting', 'Darkness'] as const).map((type) => {
+              const c = TYPE_COLOR[type];
+              return (
+                <button
+                  key={type}
+                  onClick={() => onNavigate(`catalog?type=${type}`)}
+                  className={`group flex items-center gap-4 bg-white border border-gray-100 rounded-2xl px-4 py-3.5 hover:border-gray-200 hover:shadow-md transition-all duration-200 text-left`}
+                >
+                  <div className={`w-12 h-12 rounded-xl ${c.icon} flex items-center justify-center flex-shrink-0 text-2xl transition-transform duration-200 group-hover:scale-110`}>
                     {TYPE_ICONS[type]}
-                  </span>
-                  <span
-                    className={`font-black text-lg sm:text-xl tracking-wider drop-shadow ${TYPE_LABEL_COLOR[type] ?? 'text-white'}`}
-                    style={{ fontFamily: 'Rajdhani, Inter, sans-serif', textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}
-                  >
-                    {type}
-                  </span>
-                  <span
-                    className={`text-[11px] font-semibold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all duration-200 -translate-y-1 group-hover:translate-y-0 ${TYPE_LABEL_COLOR[type] ? 'text-amber-800' : 'text-white/80'}`}
-                  >
-                    Browse →
-                  </span>
-                </div>
-              </button>
-            ))}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={`font-bold text-sm ${c.label}`} style={{ fontFamily: 'Rajdhani, Inter, sans-serif' }}>
+                      {type}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{TYPE_TAGLINE[type]}</p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-300 flex-shrink-0 group-hover:text-gray-500 group-hover:translate-x-0.5 transition-all duration-200" />
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>
