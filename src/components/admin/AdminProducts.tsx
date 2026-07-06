@@ -186,9 +186,9 @@ export default function AdminProducts() {
   const [imageSearchLoading, setImageSearchLoading] = useState(false);
   const [imageSearchError, setImageSearchError] = useState<string | null>(null);
   const imageSearchRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Inline pricing after picking a card from the image search
-  const [cardPickStep, setCardPickStep] = useState<'grid' | 'pricing'>('grid');
+  // Inline pricing — shown in same panel after picking a card
   const [pickedCard, setPickedCard] = useState<PkmnCard | null>(null);
   const [inlinePriceLoading, setInlinePriceLoading] = useState(false);
   const [inlinePriceResults, setInlinePriceResults] = useState<TcgResult[]>([]);
@@ -280,6 +280,7 @@ export default function AdminProducts() {
     setShowTcgResults(false);
     setShowImageSearch(false);
     setImageSearchResults([]);
+    setPickedCard(null);
     setShowForm(true);
   };
 
@@ -292,6 +293,7 @@ export default function AdminProducts() {
     setShowTcgResults(false);
     setShowImageSearch(false);
     setImageSearchResults([]);
+    setPickedCard(null);
     setShowForm(true);
   };
 
@@ -338,6 +340,7 @@ export default function AdminProducts() {
     setImageSearchLoading(true);
     setImageSearchError(null);
     setImageSearchResults([]);
+    setPickedCard(null);
     try {
       const q = encodeURIComponent(`name:"${query.trim()}"`);
       const res = await fetch(
@@ -355,23 +358,34 @@ export default function AdminProducts() {
     }
   };
 
+  const handleImageSearchInput = (value: string) => {
+    setImageSearchQuery(value);
+    setImageSearchError(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.trim().length >= 2) {
+      debounceRef.current = setTimeout(() => searchCardImages(value), 500);
+    } else {
+      setImageSearchResults([]);
+    }
+  };
+
   const openImageSearch = () => {
+    const q = form.name.trim();
     setShowImageSearch(true);
-    setCardPickStep('grid');
     setPickedCard(null);
-    setImageSearchQuery(form.name.trim());
+    setImageSearchQuery(q);
     setImageSearchResults([]);
     setImageSearchError(null);
     setInlinePriceResults([]);
     setInlinePriceError(null);
-    if (form.name.trim()) searchCardImages(form.name.trim());
+    if (q) searchCardImages(q);
     setTimeout(() => imageSearchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
   };
 
   const closeImageSearch = () => {
     setShowImageSearch(false);
-    setCardPickStep('grid');
     setPickedCard(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
   };
 
   const pickCardImage = async (card: PkmnCard) => {
@@ -387,7 +401,6 @@ export default function AdminProducts() {
     }));
     setPreviewUrl(card.images.large);
     setPickedCard(card);
-    setCardPickStep('pricing');
     setInlinePriceLoading(true);
     setInlinePriceError(null);
     setInlinePriceResults([]);
@@ -1167,111 +1180,131 @@ export default function AdminProducts() {
 
                   {/* Image search panel */}
                   {showImageSearch && (
-                    <div ref={imageSearchRef} className="rounded-xl border border-yellow-200 bg-yellow-50/40 p-4 space-y-3">
-                      {cardPickStep === 'grid' ? (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <div className="relative flex-1">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                              <input
-                                type="text"
-                                value={imageSearchQuery}
-                                onChange={(e) => setImageSearchQuery(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && searchCardImages(imageSearchQuery)}
-                                placeholder="e.g. Charizard VMAX"
-                                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white"
-                                autoFocus
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => searchCardImages(imageSearchQuery)}
-                              disabled={!imageSearchQuery.trim() || imageSearchLoading}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-colors"
-                            >
-                              {imageSearchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                              {imageSearchLoading ? 'Searching...' : 'Search'}
+                    <div ref={imageSearchRef} className="rounded-xl border border-yellow-200 bg-yellow-50/30 overflow-hidden">
+                      {/* Panel header */}
+                      <div className="flex items-center gap-2 px-3 py-2.5 bg-yellow-50 border-b border-yellow-100">
+                        <Search className="w-3.5 h-3.5 text-yellow-600 flex-shrink-0" />
+                        <input
+                          type="text"
+                          value={imageSearchQuery}
+                          onChange={(e) => handleImageSearchInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && imageSearchQuery.trim()) {
+                              if (debounceRef.current) clearTimeout(debounceRef.current);
+                              searchCardImages(imageSearchQuery);
+                            }
+                          }}
+                          placeholder="Search by card name…"
+                          className="flex-1 bg-transparent text-sm placeholder-yellow-400 text-gray-800 focus:outline-none"
+                          autoFocus
+                        />
+                        {imageSearchLoading
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-500 flex-shrink-0" />
+                          : imageSearchQuery && (
+                            <button type="button" onClick={() => { setImageSearchQuery(''); setImageSearchResults([]); setPickedCard(null); }}>
+                              <X className="w-3.5 h-3.5 text-yellow-500 hover:text-yellow-700" />
                             </button>
-                            <button type="button" onClick={closeImageSearch} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg transition-colors">
-                              <X className="w-4 h-4" />
-                            </button>
+                          )
+                        }
+                        <button type="button" onClick={closeImageSearch} className="ml-1 p-1 text-gray-400 hover:text-gray-600 hover:bg-yellow-100 rounded transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-3 space-y-3">
+                        {/* Error */}
+                        {imageSearchError && !imageSearchLoading && (
+                          <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                            {imageSearchError}
                           </div>
+                        )}
 
-                          {imageSearchError && !imageSearchLoading && (
-                            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                              {imageSearchError}
+                        {/* Results grid */}
+                        {imageSearchResults.length > 0 && (
+                          <div>
+                            <p className="text-[11px] text-gray-400 mb-2">
+                              {imageSearchResults.length} result{imageSearchResults.length !== 1 ? 's' : ''} — click to select
+                            </p>
+                            <div className="grid grid-cols-5 sm:grid-cols-7 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                              {imageSearchResults.map((card) => (
+                                <button
+                                  key={card.id}
+                                  type="button"
+                                  onClick={() => pickCardImage(card)}
+                                  title={`${card.name} · ${card.set.name} #${card.number}`}
+                                  className={`group relative rounded-lg overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-md active:scale-95 ${
+                                    pickedCard?.id === card.id
+                                      ? 'border-yellow-500 shadow-md scale-105'
+                                      : 'border-transparent hover:border-yellow-400'
+                                  }`}
+                                >
+                                  <img src={card.images.small} alt={card.name} className="w-full aspect-[245/342] object-cover bg-gray-100" loading="lazy" />
+                                  {pickedCard?.id === card.id && (
+                                    <div className="absolute inset-0 bg-yellow-500/20 flex items-center justify-center">
+                                      <CheckCircle className="w-5 h-5 text-yellow-600 drop-shadow" />
+                                    </div>
+                                  )}
+                                </button>
+                              ))}
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {imageSearchResults.length > 0 && (
-                            <>
-                              <p className="text-xs text-gray-500 font-medium">
-                                {imageSearchResults.length} result{imageSearchResults.length !== 1 ? 's' : ''} — click a card to use its photo and auto-load prices:
-                              </p>
-                              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1">
-                                {imageSearchResults.map((card) => (
-                                  <button
-                                    key={card.id}
-                                    type="button"
-                                    onClick={() => pickCardImage(card)}
-                                    title={`${card.name} · ${card.set.name} #${card.number}`}
-                                    className="group relative rounded-lg overflow-hidden border-2 border-transparent hover:border-yellow-400 transition-all hover:scale-105 hover:shadow-md active:scale-95"
-                                  >
-                                    <img src={card.images.small} alt={card.name} className="w-full aspect-[245/342] object-cover bg-gray-100" loading="lazy" />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                                  </button>
-                                ))}
+                        {!imageSearchLoading && imageSearchResults.length === 0 && !imageSearchError && (
+                          <p className="text-xs text-gray-400 text-center py-4">
+                            {imageSearchQuery.trim() ? 'Searching…' : 'Type a card name to search'}
+                          </p>
+                        )}
+
+                        {/* Inline price picker — appears after card selection, no step change */}
+                        {pickedCard && (
+                          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                            {/* Selected card banner */}
+                            <div className="flex items-center gap-2.5 px-3 py-2 bg-gray-50 border-b border-gray-100">
+                              <img src={pickedCard.images.small} alt={pickedCard.name} className="w-8 h-11 object-cover rounded shadow-sm flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-gray-800 truncate">{pickedCard.name}</p>
+                                <p className="text-[10px] text-gray-500 truncate">{pickedCard.set.name} · #{pickedCard.number}</p>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {pickedCard.hp && <span className="text-[9px] bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded-full font-semibold">{pickedCard.hp} HP</span>}
+                                  {mapApiType(pickedCard.types) && <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded-full font-semibold">{mapApiType(pickedCard.types)}</span>}
+                                  {mapApiRarity(pickedCard.rarity) && <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-200 px-1.5 py-0.5 rounded-full font-semibold">{mapApiRarity(pickedCard.rarity)}</span>}
+                                </div>
                               </div>
-                            </>
-                          )}
+                              <button
+                                type="button"
+                                onClick={closeImageSearch}
+                                className="flex-shrink-0 text-xs text-gray-400 hover:text-gray-600 underline"
+                              >
+                                Done
+                              </button>
+                            </div>
 
-                          {!imageSearchLoading && imageSearchResults.length === 0 && !imageSearchError && (
-                            <p className="text-xs text-gray-400 text-center py-3">Type a card name and press Search.</p>
-                          )}
-                        </>
-                      ) : (
-                        /* Step 2: inline price selection */
-                        <>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              {pickedCard && (
-                                <img src={pickedCard.images.small} alt={pickedCard.name} className="w-9 h-12 object-cover rounded-md shadow-sm flex-shrink-0" />
+                            {/* Price section */}
+                            <div className="px-3 py-2.5 space-y-2">
+                              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Market prices — click to apply</p>
+
+                              {inlinePriceLoading && (
+                                <div className="flex items-center gap-2 py-3 text-xs text-gray-400">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                                  Fetching prices from PokéTrace…
+                                </div>
                               )}
-                              <div>
-                                <p className="text-xs font-bold text-gray-800">Step 2 — Select a price tier</p>
-                                {pickedCard && (
-                                  <p className="text-[10px] text-gray-500 mt-0.5">{pickedCard.name} · {pickedCard.set.name} #{pickedCard.number}</p>
-                                )}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setCardPickStep('grid')}
-                              className="text-xs text-yellow-700 hover:text-yellow-900 font-semibold flex items-center gap-1"
-                            >
-                              ← Back
-                            </button>
-                          </div>
 
-                          {inlinePriceLoading && (
-                            <div className="flex items-center justify-center gap-2 py-6 text-sm text-gray-500">
-                              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                              Fetching market prices from PokéTrace...
-                            </div>
-                          )}
+                              {inlinePriceError && !inlinePriceLoading && (
+                                <div className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2.5 py-2">
+                                  <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                                  {inlinePriceError}
+                                </div>
+                              )}
 
-                          {inlinePriceError && !inlinePriceLoading && (
-                            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 text-xs text-red-700">
-                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                              <span>{inlinePriceError}</span>
-                            </div>
-                          )}
+                              {!inlinePriceLoading && inlinePriceResults.length === 0 && !inlinePriceError && (
+                                <p className="text-xs text-gray-400 py-1">No pricing data found — set price manually below.</p>
+                              )}
 
-                          {!inlinePriceLoading && inlinePriceResults.length > 0 && (
-                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                              {inlinePriceResults.map((r) => {
-                                const tiers: { label: string; tierKey: string; sublabel?: string; value: number | null; highlight?: boolean }[] = [
+                              {!inlinePriceLoading && inlinePriceResults.map((r) => {
+                                const tiers: { label: string; tierKey: string; sublabel: string; value: number | null; highlight?: boolean }[] = [
                                   { label: 'TCG NM',    tierKey: 'tcgNmAvg',    sublabel: 'near mint avg',  value: r.tcgNmAvg,    highlight: true },
                                   { label: 'TCG LP',    tierKey: 'tcgLpAvg',    sublabel: 'lightly played', value: r.tcgLpAvg },
                                   { label: 'TCG 7d',    tierKey: 'tcgNmAvg7d',  sublabel: '7-day avg',      value: r.tcgNmAvg7d },
@@ -1282,60 +1315,43 @@ export default function AdminProducts() {
                                   { label: 'eBay High', tierKey: 'ebayNmHigh',  sublabel: 'ebay nm high',   value: r.ebayNmHigh },
                                 ];
                                 const available = tiers.filter((t) => t.value !== null);
+                                if (available.length === 0) return null;
                                 return (
-                                  <div key={r.productId} className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      {r.imageUrl && <img src={r.imageUrl} alt={r.name} className="w-7 h-7 object-cover rounded flex-shrink-0" />}
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-semibold text-gray-900 truncate">{r.name}</p>
-                                        <p className="text-[10px] text-gray-500">{r.setName}</p>
-                                      </div>
-                                      <a href={r.tcgUrl} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-blue-500 transition-colors">
-                                        <ExternalLink className="w-3.5 h-3.5" />
+                                  <div key={r.productId} className="space-y-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                      {r.imageUrl && <img src={r.imageUrl} alt={r.name} className="w-5 h-5 object-cover rounded flex-shrink-0" />}
+                                      <p className="text-[10px] text-gray-500 truncate">{r.name} · {r.setName}</p>
+                                      <a href={r.tcgUrl} target="_blank" rel="noopener noreferrer" className="ml-auto flex-shrink-0 text-gray-300 hover:text-blue-500 transition-colors">
+                                        <ExternalLink className="w-3 h-3" />
                                       </a>
                                     </div>
-                                    {available.length === 0 ? (
-                                      <p className="text-[10px] text-gray-400">No prices available on PokéTrace</p>
-                                    ) : (
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {available.map((t) => (
-                                          <button
-                                            key={t.label}
-                                            type="button"
-                                            title={t.sublabel}
-                                            onClick={() => applyInlinePrice(t.value!, t.tierKey)}
-                                            className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg border transition-all hover:scale-105 active:scale-95 ${
-                                              t.highlight
-                                                ? 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-400'
-                                                : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-400'
-                                            }`}
-                                          >
-                                            <span className={`text-xs font-bold ${t.highlight ? 'text-blue-700' : 'text-gray-700'}`}>
-                                              ${t.value!.toFixed(2)}
-                                            </span>
-                                            <span className="text-[9px] text-gray-400 uppercase tracking-wide">{t.label}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {available.map((t) => (
+                                        <button
+                                          key={t.label}
+                                          type="button"
+                                          title={t.sublabel}
+                                          onClick={() => applyInlinePrice(t.value!, t.tierKey)}
+                                          className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg border transition-all hover:scale-105 active:scale-95 ${
+                                            t.highlight
+                                              ? 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-400'
+                                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-400'
+                                          }`}
+                                        >
+                                          <span className={`text-xs font-bold ${t.highlight ? 'text-blue-700' : 'text-gray-700'}`}>
+                                            ${t.value!.toFixed(2)}
+                                          </span>
+                                          <span className="text-[9px] text-gray-400 uppercase tracking-wide">{t.label}</span>
+                                        </button>
+                                      ))}
+                                    </div>
                                   </div>
                                 );
                               })}
                             </div>
-                          )}
-
-                          {!inlinePriceLoading && inlinePriceResults.length === 0 && !inlinePriceError && (
-                            <p className="text-xs text-gray-400 text-center py-3">No pricing data found on PokéTrace for this card.</p>
-                          )}
-
-                          <div className="flex items-center justify-between border-t border-yellow-100 pt-2">
-                            <p className="text-xs text-gray-400">You can also set the price manually in the form.</p>
-                            <button type="button" onClick={closeImageSearch} className="text-xs font-semibold text-gray-500 hover:text-gray-700 underline">
-                              Continue without price
-                            </button>
                           </div>
-                        </>
-                      )}
+                        )}
+                      </div>
                     </div>
                   )}
 
