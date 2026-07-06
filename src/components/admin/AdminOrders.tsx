@@ -275,7 +275,12 @@ export default function AdminOrders() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    await supabase.from('orders').delete().eq('id', deleteTarget.id);
+    const { error } = await supabase.from('orders').delete().eq('id', deleteTarget.id);
+    if (error) {
+      alert(`Failed to delete order: ${error.message}`);
+      setDeleting(false);
+      return;
+    }
     setOrders((prev) => prev.filter((o) => o.id !== deleteTarget.id));
     if (selectedOrder?.id === deleteTarget.id) setSelectedOrder(null);
     setDeleteTarget(null);
