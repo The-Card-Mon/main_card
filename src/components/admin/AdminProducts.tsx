@@ -1377,7 +1377,7 @@ export default function AdminProducts() {
                               key={card.id}
                               type="button"
                               title={`${card.name} · ${card.set.name} #${card.number}`}
-                              onClick={() => { setField('image_url', card.images.large); setPreviewUrl(card.images.large); setShowImagePanel(false); }}
+                              onClick={() => { pickCardImage(card); setShowImagePanel(false); }}
                               className="relative rounded-lg overflow-hidden border-2 border-transparent hover:border-yellow-400 transition-all hover:scale-105 hover:shadow-md active:scale-95"
                             >
                               <img src={card.images.small} alt={card.name} className="w-full aspect-[245/342] object-cover bg-gray-100" loading="lazy" />
