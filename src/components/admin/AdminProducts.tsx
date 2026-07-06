@@ -184,7 +184,12 @@ export default function AdminProducts() {
   const [cardDropdownOpen, setCardDropdownOpen] = useState(false);
   const [imageSearchResults, setImageSearchResults] = useState<PkmnCard[]>([]);
   const [imageSearchLoading, setImageSearchLoading] = useState(false);
+  const [showImagePanel, setShowImagePanel] = useState(false);
+  const [imagePanelQuery, setImagePanelQuery] = useState('');
+  const [imagePanelResults, setImagePanelResults] = useState<PkmnCard[]>([]);
+  const [imagePanelLoading, setImagePanelLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imagePanelDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Inline pricing — shown after picking a card
@@ -282,6 +287,9 @@ export default function AdminProducts() {
     setCardDropdownOpen(false);
     setImageSearchResults([]);
     setPickedCard(null);
+    setShowImagePanel(false);
+    setImagePanelQuery('');
+    setImagePanelResults([]);
     setShowForm(true);
   };
 
@@ -295,6 +303,9 @@ export default function AdminProducts() {
     setCardDropdownOpen(false);
     setImageSearchResults([]);
     setPickedCard(null);
+    setShowImagePanel(false);
+    setImagePanelQuery('');
+    setImagePanelResults([]);
     setShowForm(true);
   };
 
@@ -366,6 +377,44 @@ export default function AdminProducts() {
     } else {
       setCardDropdownOpen(false);
       setImageSearchResults([]);
+    }
+  };
+
+  const openImagePanel = () => {
+    const q = form.name.trim();
+    setShowImagePanel(true);
+    setImagePanelQuery(q);
+    setImagePanelResults([]);
+    if (q) {
+      setImagePanelLoading(true);
+      fetch(
+        `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(`name:"${q}"`)}&pageSize=24&select=id,name,number,set,images,types,hp,rarity`,
+        { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+      )
+        .then((r) => r.json())
+        .then((j) => setImagePanelResults(j.data ?? []))
+        .catch(() => {})
+        .finally(() => setImagePanelLoading(false));
+    }
+  };
+
+  const handleImagePanelInput = (value: string) => {
+    setImagePanelQuery(value);
+    if (imagePanelDebounceRef.current) clearTimeout(imagePanelDebounceRef.current);
+    if (value.trim().length >= 2) {
+      imagePanelDebounceRef.current = setTimeout(() => {
+        setImagePanelLoading(true);
+        fetch(
+          `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(`name:"${value.trim()}"`)}&pageSize=24&select=id,name,number,set,images,types,hp,rarity`,
+          { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+        )
+          .then((r) => r.json())
+          .then((j) => setImagePanelResults(j.data ?? []))
+          .catch(() => {})
+          .finally(() => setImagePanelLoading(false));
+      }, 500);
+    } else {
+      setImagePanelResults([]);
     }
   };
 
@@ -1280,7 +1329,70 @@ export default function AdminProducts() {
                       className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                       placeholder="https://... or auto-filled when you pick a card above"
                     />
+                    <button
+                      type="button"
+                      onClick={() => showImagePanel ? setShowImagePanel(false) : openImagePanel()}
+                      className="flex items-center gap-1.5 px-3 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shadow-sm"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      Search Cards
+                    </button>
                   </div>
+
+                  {/* Image search panel */}
+                  {showImagePanel && (
+                    <div className="rounded-xl border border-yellow-200 bg-yellow-50/30 overflow-hidden mb-2">
+                      <div className="flex items-center gap-2 px-3 py-2.5 bg-yellow-50 border-b border-yellow-100">
+                        <Search className="w-3.5 h-3.5 text-yellow-600 flex-shrink-0" />
+                        <input
+                          type="text"
+                          value={imagePanelQuery}
+                          onChange={(e) => handleImagePanelInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && imagePanelQuery.trim()) {
+                              if (imagePanelDebounceRef.current) clearTimeout(imagePanelDebounceRef.current);
+                              handleImagePanelInput(imagePanelQuery);
+                            }
+                          }}
+                          placeholder="Search by card name…"
+                          className="flex-1 bg-transparent text-sm placeholder-yellow-400 text-gray-800 focus:outline-none"
+                          autoFocus
+                        />
+                        {imagePanelLoading
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-500 flex-shrink-0" />
+                          : imagePanelQuery && (
+                            <button type="button" onClick={() => { setImagePanelQuery(''); setImagePanelResults([]); }}>
+                              <X className="w-3.5 h-3.5 text-yellow-500 hover:text-yellow-700" />
+                            </button>
+                          )
+                        }
+                        <button type="button" onClick={() => setShowImagePanel(false)} className="ml-1 p-1 text-gray-400 hover:text-gray-600 rounded transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {imagePanelResults.length > 0 && (
+                        <div className="p-2 grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-56 overflow-y-auto">
+                          {imagePanelResults.map((card) => (
+                            <button
+                              key={card.id}
+                              type="button"
+                              title={`${card.name} · ${card.set.name} #${card.number}`}
+                              onClick={() => { setField('image_url', card.images.large); setPreviewUrl(card.images.large); setShowImagePanel(false); }}
+                              className="relative rounded-lg overflow-hidden border-2 border-transparent hover:border-yellow-400 transition-all hover:scale-105 hover:shadow-md active:scale-95"
+                            >
+                              <img src={card.images.small} alt={card.name} className="w-full aspect-[245/342] object-cover bg-gray-100" loading="lazy" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {!imagePanelLoading && imagePanelResults.length === 0 && imagePanelQuery.trim() && (
+                        <p className="text-xs text-gray-400 text-center py-4">No cards found. Try a shorter name.</p>
+                      )}
+                      {!imagePanelLoading && !imagePanelQuery.trim() && (
+                        <p className="text-xs text-gray-400 text-center py-4">Type a card name to search</p>
+                      )}
+                    </div>
+                  )}
                   <p className="text-xs text-gray-400 mt-2 mb-2">Or pick a sample image:</p>
                   <div className="flex flex-wrap gap-2">
                     {POKEMON_IMAGES.map((url, i) => (
