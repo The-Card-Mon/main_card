@@ -72,6 +72,40 @@ interface PkmnCard {
   number: string;
   set: { name: string };
   images: { small: string; large: string };
+  types?: string[];
+  hp?: string;
+  rarity?: string;
+}
+
+const CARD_TYPE_ALIASES: Record<string, string> = {
+  Lightning: 'Lightning',
+  Psychic: 'Psychic',
+  Fighting: 'Fighting',
+  Darkness: 'Darkness',
+  Metal: 'Metal',
+  Fairy: 'Fairy',
+  Dragon: 'Dragon',
+  Colorless: 'Colorless',
+  Fire: 'Fire',
+  Water: 'Water',
+  Grass: 'Grass',
+};
+
+function mapApiType(types: string[] | undefined): string {
+  if (!types?.length) return '';
+  return CARD_TYPE_ALIASES[types[0]] ?? types[0];
+}
+
+function mapApiRarity(apiRarity: string | undefined): string {
+  if (!apiRarity) return '';
+  const r = apiRarity.toLowerCase();
+  if (r === 'common') return 'Common';
+  if (r === 'uncommon') return 'Uncommon';
+  if (r.includes('hyper') || r.includes('secret') || r.includes('rainbow') || r.includes('shiny') || r.includes('special illustration')) return 'Secret Rare';
+  if (r.includes('amazing')) return 'Legendary';
+  if (r.includes('ultra') || r.includes('vmax') || r.includes(' ex') || r.includes(' gx') || r.includes(' v') || r.includes('illustration')) return 'Ultra Rare';
+  if (r.includes('rare')) return 'Rare';
+  return '';
 }
 
 const EMPTY: ProductForm = {
@@ -307,7 +341,7 @@ export default function AdminProducts() {
     try {
       const q = encodeURIComponent(`name:"${query.trim()}"`);
       const res = await fetch(
-        `https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=24&select=id,name,number,set,images`,
+        `https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=24&select=id,name,number,set,images,types,hp,rarity`,
         { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
       );
       if (!res.ok) throw new Error(`API error ${res.status}`);
@@ -347,6 +381,9 @@ export default function AdminProducts() {
       name: prev.name.trim() ? prev.name : card.name,
       set_name: card.set.name,
       card_number: card.number,
+      hp: card.hp ? parseInt(card.hp) || 0 : prev.hp,
+      card_type: mapApiType(card.types) || prev.card_type,
+      rarity: mapApiRarity(card.rarity) || prev.rarity,
     }));
     setPreviewUrl(card.images.large);
     setPickedCard(card);
