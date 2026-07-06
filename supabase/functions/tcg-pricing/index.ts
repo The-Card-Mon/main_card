@@ -14,8 +14,6 @@ function ok(body: unknown) {
   });
 }
 
-// API structure: prices.tcgplayer.NEAR_MINT.avg / avg7d / avg30d etc.
-// prices.ebay.NEAR_MINT.avg / avg7d / low / high etc.
 function tcgField(prices: any, condition: string, field: string): number | null {
   const val = prices?.tcgplayer?.[condition]?.[field];
   return typeof val === "number" ? val : null;
@@ -24,6 +22,29 @@ function tcgField(prices: any, condition: string, field: string): number | null 
 function ebayField(prices: any, condition: string, field: string): number | null {
   const val = prices?.ebay?.[condition]?.[field];
   return typeof val === "number" ? val : null;
+}
+
+function toResult(card: any) {
+  return {
+    productId: card.id ?? String(Math.random()),
+    name: card.name ?? "",
+    setName: card.set?.name ?? card.setName ?? "",
+    number: card.number ?? card.cardNumber ?? "",
+    imageUrl: card.images?.large ?? card.images?.small ?? card.imageUrl ?? null,
+    tcgUrl: `https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(card.name ?? "")}`,
+    tcgNmAvg: tcgField(card.prices, "NEAR_MINT", "avg"),
+    tcgLpAvg: tcgField(card.prices, "LIGHTLY_PLAYED", "avg"),
+    tcgNmAvg7d: tcgField(card.prices, "NEAR_MINT", "avg7d"),
+    tcgNmAvg30d: tcgField(card.prices, "NEAR_MINT", "avg30d"),
+    ebayNmAvg: ebayField(card.prices, "NEAR_MINT", "avg"),
+    ebayNmAvg7d: ebayField(card.prices, "NEAR_MINT", "avg7d"),
+    ebayNmLow: ebayField(card.prices, "NEAR_MINT", "low"),
+    ebayNmHigh: ebayField(card.prices, "NEAR_MINT", "high"),
+  };
+}
+
+function normalize(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 Deno.serve(async (req: Request) => {
@@ -36,9 +57,14 @@ Deno.serve(async (req: Request) => {
   }
 
   let name: string;
+  let set_name: string | undefined;
+  let card_number: string | undefined;
+
   try {
     const body = await req.json();
     name = body.name;
+    set_name = body.set_name;
+    card_number = body.card_number;
   } catch {
     return ok({ error: "Invalid request body" });
   }
@@ -74,24 +100,39 @@ Deno.serve(async (req: Request) => {
   const cards: any[] = data.data ?? [];
 
   if (!cards.length) {
-    return ok({ results: [] });
+    return ok({ exact: null, more: [] });
   }
 
-  const results = cards.map((card: any) => ({
-    productId: card.id ?? String(Math.random()),
-    name: card.name ?? "",
-    setName: card.set?.name ?? card.setName ?? "",
-    imageUrl: card.images?.large ?? card.images?.small ?? card.imageUrl ?? null,
-    tcgUrl: `https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(card.name ?? "")}`,
-    tcgNmAvg: tcgField(card.prices, "NEAR_MINT", "avg"),
-    tcgLpAvg: tcgField(card.prices, "LIGHTLY_PLAYED", "avg"),
-    tcgNmAvg7d: tcgField(card.prices, "NEAR_MINT", "avg7d"),
-    tcgNmAvg30d: tcgField(card.prices, "NEAR_MINT", "avg30d"),
-    ebayNmAvg: ebayField(card.prices, "NEAR_MINT", "avg"),
-    ebayNmAvg7d: ebayField(card.prices, "NEAR_MINT", "avg7d"),
-    ebayNmLow: ebayField(card.prices, "NEAR_MINT", "low"),
-    ebayNmHigh: ebayField(card.prices, "NEAR_MINT", "high"),
-  }));
+  const all = cards.map(toResult);
 
-  return ok({ results });
+  // Try to find exact match by set name + card number
+  let exact: typeof all[0] | null = null;
+  let more: typeof all = [];
+
+  if (set_name && card_number) {
+    const normSet = normalize(set_name);
+    const normNum = normalize(card_number);
+    const idx = all.findIndex(
+      (r) => normalize(r.setName) === normSet && normalize(r.number) === normNum
+    );
+    if (idx !== -1) {
+      exact = all[idx];
+      more = [...all.slice(0, idx), ...all.slice(idx + 1)];
+    } else {
+      // Fallback: match by set name only
+      const setIdx = all.findIndex((r) => normalize(r.setName) === normSet);
+      if (setIdx !== -1) {
+        exact = all[setIdx];
+        more = [...all.slice(0, setIdx), ...all.slice(setIdx + 1)];
+      } else {
+        exact = all[0];
+        more = all.slice(1);
+      }
+    }
+  } else {
+    exact = all[0];
+    more = all.slice(1);
+  }
+
+  return ok({ exact, more });
 });

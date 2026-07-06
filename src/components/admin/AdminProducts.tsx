@@ -54,6 +54,7 @@ interface TcgResult {
   productId: string;
   name: string;
   setName: string;
+  number: string;
   imageUrl: string | null;
   tcgUrl: string;
   tcgNmAvg: number | null;
@@ -189,8 +190,10 @@ export default function AdminProducts() {
   // Inline pricing — shown after picking a card
   const [pickedCard, setPickedCard] = useState<PkmnCard | null>(null);
   const [inlinePriceLoading, setInlinePriceLoading] = useState(false);
-  const [inlinePriceResults, setInlinePriceResults] = useState<TcgResult[]>([]);
+  const [inlinePriceExact, setInlinePriceExact] = useState<TcgResult | null>(null);
+  const [inlinePriceMore, setInlinePriceMore] = useState<TcgResult[]>([]);
   const [inlinePriceError, setInlinePriceError] = useState<string | null>(null);
+  const [showMorePrices, setShowMorePrices] = useState(false);
 
   useEffect(() => { fetchProducts(); }, []);
 
@@ -383,14 +386,17 @@ export default function AdminProducts() {
     setImageSearchResults([]);
     setInlinePriceLoading(true);
     setInlinePriceError(null);
-    setInlinePriceResults([]);
+    setInlinePriceExact(null);
+    setInlinePriceMore([]);
+    setShowMorePrices(false);
     try {
       const { data, error } = await supabase.functions.invoke('tcg-pricing', {
-        body: { name: card.name, set_name: card.set.name },
+        body: { name: card.name, set_name: card.set.name, card_number: card.number },
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
-      setInlinePriceResults(data.results ?? []);
+      setInlinePriceExact(data.exact ?? null);
+      setInlinePriceMore(data.more ?? []);
     } catch (err: any) {
       setInlinePriceError(err.message ?? 'Failed to fetch pricing');
     } finally {
@@ -408,7 +414,8 @@ export default function AdminProducts() {
       tcg_price_tier: tierKey,
     }));
     setPickedCard(null);
-    setInlinePriceResults([]);
+    setInlinePriceExact(null);
+    setInlinePriceMore([]);
   };
 
   const updateAllPrices = async () => {
@@ -892,7 +899,7 @@ export default function AdminProducts() {
                             {mapApiRarity(pickedCard.rarity) && <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded-full font-semibold">{mapApiRarity(pickedCard.rarity)}</span>}
                           </div>
                         </div>
-                        <button type="button" onClick={() => { setPickedCard(null); setInlinePriceResults([]); }} className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+                        <button type="button" onClick={() => { setPickedCard(null); setInlinePriceExact(null); setInlinePriceMore([]); }} className="text-gray-300 hover:text-gray-500 flex-shrink-0">
                           <X className="w-4 h-4" />
                         </button>
                       </div>
@@ -905,7 +912,13 @@ export default function AdminProducts() {
                         {inlinePriceError && !inlinePriceLoading && (
                           <p className="text-xs text-red-500">{inlinePriceError}</p>
                         )}
-                        {!inlinePriceLoading && inlinePriceResults.map((r) => {
+                        {!inlinePriceLoading && !inlinePriceExact && !inlinePriceError && (
+                          <p className="text-xs text-gray-400">No pricing data found — set price manually below.</p>
+                        )}
+                        {!inlinePriceLoading && [
+                          ...(inlinePriceExact ? [{ r: inlinePriceExact, isExact: true }] : []),
+                          ...(showMorePrices ? inlinePriceMore.map((r) => ({ r, isExact: false })) : []),
+                        ].map(({ r, isExact }) => {
                           const tiers: { label: string; tierKey: string; sublabel: string; value: number | null; highlight?: boolean }[] = [
                             { label: 'TCG NM',    tierKey: 'tcgNmAvg',    sublabel: 'near mint avg',  value: r.tcgNmAvg,    highlight: true },
                             { label: 'TCG LP',    tierKey: 'tcgLpAvg',    sublabel: 'lightly played', value: r.tcgLpAvg },
@@ -917,13 +930,14 @@ export default function AdminProducts() {
                             { label: 'eBay High', tierKey: 'ebayNmHigh',  sublabel: 'ebay nm high',   value: r.ebayNmHigh },
                           ];
                           const available = tiers.filter((t) => t.value !== null);
-                          if (!available.length) return <p key={r.productId} className="text-xs text-gray-400">No pricing found — set manually below.</p>;
+                          if (!available.length) return null;
                           return (
-                            <div key={r.productId} className="space-y-1.5">
+                            <div key={r.productId} className={`space-y-1.5 ${!isExact ? 'pt-2 border-t border-gray-100' : ''}`}>
                               <div className="flex items-center gap-1.5">
                                 {r.imageUrl && <img src={r.imageUrl} alt={r.name} className="w-4 h-4 object-cover rounded flex-shrink-0" />}
-                                <p className="text-[10px] text-gray-400 truncate">{r.name} · {r.setName}</p>
-                                <a href={r.tcgUrl} target="_blank" rel="noopener noreferrer" className="ml-auto flex-shrink-0 text-gray-300 hover:text-blue-500"><ExternalLink className="w-3 h-3" /></a>
+                                <p className="text-[10px] text-gray-400 truncate flex-1">{r.name} · {r.setName}{r.number ? ` #${r.number}` : ''}</p>
+                                {isExact && <span className="text-[9px] bg-green-50 text-green-600 border border-green-100 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">exact match</span>}
+                                <a href={r.tcgUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 text-gray-300 hover:text-blue-500"><ExternalLink className="w-3 h-3" /></a>
                               </div>
                               <div className="flex flex-wrap gap-1.5">
                                 {available.map((t) => (
@@ -944,6 +958,16 @@ export default function AdminProducts() {
                             </div>
                           );
                         })}
+                        {!inlinePriceLoading && inlinePriceMore.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowMorePrices((v) => !v)}
+                            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-colors pt-1"
+                          >
+                            {showMorePrices ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            {showMorePrices ? 'Hide other variants' : `${inlinePriceMore.length} more variant${inlinePriceMore.length !== 1 ? 's' : ''}`}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
