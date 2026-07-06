@@ -1,0 +1,1 @@
+ALTER TABLE modal_config ADD COLUMN IF NOT EXISTS social_discord TEXT DEFAULT '';

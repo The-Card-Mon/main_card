@@ -52,7 +52,7 @@ export default function AdminSettings() {
   useEffect(() => {
     supabase
       .from('modal_config')
-      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube')
+      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord')
       .eq('id', 1)
       .single()
       .then(({ data }) => {
@@ -66,6 +66,7 @@ export default function AdminSettings() {
           setSocialFacebook(data.social_facebook ?? '');
           setSocialTwitter(data.social_twitter ?? '');
           setSocialYoutube(data.social_youtube ?? '');
+          setSocialDiscord(data.social_discord ?? '');
         }
         setMaintLoaded(true);
       });
@@ -113,6 +114,7 @@ export default function AdminSettings() {
   const [socialFacebook, setSocialFacebook]   = useState('');
   const [socialTwitter, setSocialTwitter]     = useState('');
   const [socialYoutube, setSocialYoutube]     = useState('');
+  const [socialDiscord, setSocialDiscord]     = useState('');
   const [socialSaving, setSocialSaving]       = useState(false);
   const [socialSaved, setSocialSaved]         = useState(false);
 
@@ -158,6 +160,7 @@ export default function AdminSettings() {
       social_facebook:  socialFacebook,
       social_twitter:   socialTwitter,
       social_youtube:   socialYoutube,
+      social_discord:   socialDiscord,
     }).eq('id', 1);
     setSocialSaving(false);
     setSocialSaved(true);
@@ -387,11 +390,12 @@ export default function AdminSettings() {
                   <div className="p-6 space-y-4">
                     <p className="text-sm text-gray-500">Links appear in the site footer. Leave blank to hide an icon.</p>
                     {[
-                      { label: 'Instagram', placeholder: 'https://instagram.com/yourchannel', value: socialInstagram, set: setSocialInstagram },
-                      { label: 'TikTok',    placeholder: 'https://tiktok.com/@yourchannel',  value: socialTiktok,    set: setSocialTiktok },
-                      { label: 'Facebook',  placeholder: 'https://facebook.com/yourpage',    value: socialFacebook,  set: setSocialFacebook },
-                      { label: 'X / Twitter', placeholder: 'https://x.com/yourhandle',       value: socialTwitter,   set: setSocialTwitter },
-                      { label: 'YouTube',   placeholder: 'https://youtube.com/@yourchannel', value: socialYoutube,   set: setSocialYoutube },
+                      { label: 'Instagram',   placeholder: 'https://instagram.com/yourchannel', value: socialInstagram, set: setSocialInstagram },
+                      { label: 'TikTok',      placeholder: 'https://tiktok.com/@yourchannel',  value: socialTiktok,    set: setSocialTiktok },
+                      { label: 'Facebook',    placeholder: 'https://facebook.com/yourpage',    value: socialFacebook,  set: setSocialFacebook },
+                      { label: 'X / Twitter', placeholder: 'https://x.com/yourhandle',         value: socialTwitter,   set: setSocialTwitter },
+                      { label: 'YouTube',     placeholder: 'https://youtube.com/@yourchannel', value: socialYoutube,   set: setSocialYoutube },
+                      { label: 'Discord',     placeholder: 'https://discord.gg/yourinvite',    value: socialDiscord,   set: setSocialDiscord },
                     ].map(({ label, placeholder, value, set }) => (
                       <div key={label}>
                         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{label}</label>

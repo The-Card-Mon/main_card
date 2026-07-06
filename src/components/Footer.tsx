@@ -7,6 +7,7 @@ interface SocialLinks {
   facebook: string;
   twitter: string;
   youtube: string;
+  discord: string;
 }
 
 interface FooterProps {
@@ -44,15 +45,21 @@ const YouTubeIcon = () => (
   </svg>
 );
 
+const DiscordIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+    <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 00-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 00-5.487 0 12.36 12.36 0 00-.617-1.23A.077.077 0 008.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 00-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 00.031.055 20.03 20.03 0 005.993 2.98.078.078 0 00.084-.026 13.83 13.83 0 001.226-1.963.074.074 0 00-.041-.104 13.175 13.175 0 01-1.872-.878.075.075 0 01-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 01.078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 01.079.009c.12.098.245.195.372.288a.075.075 0 01-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 00-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 00.084.028 19.963 19.963 0 006.002-2.981.076.076 0 00.032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 00-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.311-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.311-.946 2.38-2.157 2.38z"/>
+  </svg>
+);
+
 export default function Footer({ onNavigate }: FooterProps) {
   const [social, setSocial] = useState<SocialLinks>({
-    instagram: '', tiktok: '', facebook: '', twitter: '', youtube: '',
+    instagram: '', tiktok: '', facebook: '', twitter: '', youtube: '', discord: '',
   });
 
   useEffect(() => {
     supabase
       .from('modal_config')
-      .select('social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube')
+      .select('social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord')
       .eq('id', 1)
       .single()
       .then(({ data }) => {
@@ -63,17 +70,19 @@ export default function Footer({ onNavigate }: FooterProps) {
             facebook: data.social_facebook ?? '',
             twitter: data.social_twitter ?? '',
             youtube: data.social_youtube ?? '',
+            discord: data.social_discord ?? '',
           });
         }
       });
   }, []);
 
   const socialLinks = [
-    { key: 'instagram', href: social.instagram, Icon: InstagramIcon, label: 'Instagram', hoverClass: 'hover:text-pink-500 hover:bg-pink-50' },
-    { key: 'tiktok',    href: social.tiktok,    Icon: TikTokIcon,    label: 'TikTok',    hoverClass: 'hover:text-gray-900 hover:bg-gray-100' },
-    { key: 'facebook',  href: social.facebook,  Icon: FacebookIcon,  label: 'Facebook',  hoverClass: 'hover:text-blue-600 hover:bg-blue-50' },
-    { key: 'twitter',   href: social.twitter,   Icon: TwitterXIcon,  label: 'X / Twitter', hoverClass: 'hover:text-gray-900 hover:bg-gray-100' },
-    { key: 'youtube',   href: social.youtube,   Icon: YouTubeIcon,   label: 'YouTube',   hoverClass: 'hover:text-red-600 hover:bg-red-50' },
+    { key: 'instagram', href: social.instagram, Icon: InstagramIcon, label: 'Instagram',    hoverClass: 'hover:text-pink-500 hover:bg-pink-50' },
+    { key: 'tiktok',    href: social.tiktok,    Icon: TikTokIcon,    label: 'TikTok',       hoverClass: 'hover:text-gray-900 hover:bg-gray-100' },
+    { key: 'facebook',  href: social.facebook,  Icon: FacebookIcon,  label: 'Facebook',     hoverClass: 'hover:text-blue-600 hover:bg-blue-50' },
+    { key: 'twitter',   href: social.twitter,   Icon: TwitterXIcon,  label: 'X / Twitter',  hoverClass: 'hover:text-gray-900 hover:bg-gray-100' },
+    { key: 'youtube',   href: social.youtube,   Icon: YouTubeIcon,   label: 'YouTube',      hoverClass: 'hover:text-red-600 hover:bg-red-50' },
+    { key: 'discord',   href: social.discord,   Icon: DiscordIcon,   label: 'Discord',      hoverClass: 'hover:text-indigo-500 hover:bg-indigo-50' },
   ].filter((s) => s.href);
 
   return (
