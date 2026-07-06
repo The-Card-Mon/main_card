@@ -376,7 +376,9 @@ export default function AdminProducts() {
     setImageSearchQuery(q);
     setImageSearchResults([]);
     setImageSearchError(null);
-    setInlinePriceResults([]);
+    set
+  }
+}InlinePriceResults([]);
     setInlinePriceError(null);
     if (q) searchCardImages(q);
     setTimeout(() => imageSearchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
