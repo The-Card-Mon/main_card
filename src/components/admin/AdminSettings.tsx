@@ -19,12 +19,13 @@ import {
   Key,
   Wrench,
   Eye,
+  Share2,
 } from 'lucide-react';
 
 export default function AdminSettings() {
   const { user, profile } = useAuth();
 
-  const [activeSection, setActiveSection] = useState<'account' | 'store' | 'security' | 'ebay' | 'maintenance'>('account');
+  const [activeSection, setActiveSection] = useState<'account' | 'store' | 'security' | 'social' | 'ebay' | 'maintenance'>('account');
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [nameSaved, setNameSaved] = useState(false);
@@ -47,11 +48,11 @@ export default function AdminSettings() {
   const [maintSaving, setMaintSaving] = useState(false);
   const [maintSaved, setMaintSaved] = useState(false);
 
-  // Load maintenance config on mount
+  // Load maintenance config + social links on mount
   useEffect(() => {
     supabase
       .from('modal_config')
-      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url')
+      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube')
       .eq('id', 1)
       .single()
       .then(({ data }) => {
@@ -60,6 +61,11 @@ export default function AdminSettings() {
           setMaintTitle(data.maintenance_title ?? "We'll Be Right Back");
           setMaintMessage(data.maintenance_message ?? '');
           setMaintBg(data.maintenance_bg_image_url ?? '');
+          setSocialInstagram(data.social_instagram ?? '');
+          setSocialTiktok(data.social_tiktok ?? '');
+          setSocialFacebook(data.social_facebook ?? '');
+          setSocialTwitter(data.social_twitter ?? '');
+          setSocialYoutube(data.social_youtube ?? '');
         }
         setMaintLoaded(true);
       });
@@ -101,6 +107,15 @@ export default function AdminSettings() {
   const [storeTagline, setStoreTagline] = useState('Premium Pokemon Cards');
   const [storeSaved, setStoreSaved] = useState(false);
 
+  // Social links
+  const [socialInstagram, setSocialInstagram] = useState('');
+  const [socialTiktok, setSocialTiktok]       = useState('');
+  const [socialFacebook, setSocialFacebook]   = useState('');
+  const [socialTwitter, setSocialTwitter]     = useState('');
+  const [socialYoutube, setSocialYoutube]     = useState('');
+  const [socialSaving, setSocialSaving]       = useState(false);
+  const [socialSaved, setSocialSaved]         = useState(false);
+
   const saveName = async () => {
     if (!user) return;
     await supabase.from('profiles').update({ full_name: fullName }).eq('id', user.id);
@@ -135,12 +150,27 @@ export default function AdminSettings() {
     setTimeout(() => setStoreSaved(false), 2500);
   };
 
+  const saveSocialLinks = async () => {
+    setSocialSaving(true);
+    await supabase.from('modal_config').update({
+      social_instagram: socialInstagram,
+      social_tiktok:    socialTiktok,
+      social_facebook:  socialFacebook,
+      social_twitter:   socialTwitter,
+      social_youtube:   socialYoutube,
+    }).eq('id', 1);
+    setSocialSaving(false);
+    setSocialSaved(true);
+    setTimeout(() => setSocialSaved(false), 2500);
+  };
+
   const sections = [
-    { id: 'account' as const, label: 'Account', icon: User },
-    { id: 'store' as const, label: 'Store Settings', icon: Globe },
-    { id: 'security' as const, label: 'Security', icon: Lock },
-    { id: 'maintenance' as const, label: 'Maintenance', icon: Wrench },
-    { id: 'ebay' as const, label: 'eBay Integration', icon: ShoppingBag },
+    { id: 'account' as const,     label: 'Account',          icon: User },
+    { id: 'store' as const,       label: 'Store Settings',   icon: Globe },
+    { id: 'social' as const,      label: 'Social Media',     icon: Share2 },
+    { id: 'security' as const,    label: 'Security',         icon: Lock },
+    { id: 'maintenance' as const, label: 'Maintenance',      icon: Wrench },
+    { id: 'ebay' as const,        label: 'eBay Integration', icon: ShoppingBag },
   ];
 
   return (
@@ -340,6 +370,49 @@ export default function AdminSettings() {
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center gap-2">
                       <Star className="w-4 h-4 text-amber-500 flex-shrink-0" />
                       <p className="text-xs text-amber-700">Tip: Keep featured cards to 4–8 for best visual impact on the home page.</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Social */}
+            {activeSection === 'social' && (
+              <>
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                    <Share2 className="w-5 h-5 text-gray-500" />
+                    <h3 className="font-semibold text-gray-900">Social Media Links</h3>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <p className="text-sm text-gray-500">Links appear in the site footer. Leave blank to hide an icon.</p>
+                    {[
+                      { label: 'Instagram', placeholder: 'https://instagram.com/yourchannel', value: socialInstagram, set: setSocialInstagram },
+                      { label: 'TikTok',    placeholder: 'https://tiktok.com/@yourchannel',  value: socialTiktok,    set: setSocialTiktok },
+                      { label: 'Facebook',  placeholder: 'https://facebook.com/yourpage',    value: socialFacebook,  set: setSocialFacebook },
+                      { label: 'X / Twitter', placeholder: 'https://x.com/yourhandle',       value: socialTwitter,   set: setSocialTwitter },
+                      { label: 'YouTube',   placeholder: 'https://youtube.com/@yourchannel', value: socialYoutube,   set: setSocialYoutube },
+                    ].map(({ label, placeholder, value, set }) => (
+                      <div key={label}>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{label}</label>
+                        <input
+                          type="url"
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          placeholder={placeholder}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                      </div>
+                    ))}
+                    <div className="pt-2">
+                      <button
+                        onClick={saveSocialLinks}
+                        disabled={socialSaving}
+                        className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        {socialSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : socialSaved ? <CheckCircle className="w-4 h-4 text-green-400" /> : null}
+                        {socialSaving ? 'Saving...' : socialSaved ? 'Saved!' : 'Save Links'}
+                      </button>
                     </div>
                   </div>
                 </div>

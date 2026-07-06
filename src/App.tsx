@@ -5,6 +5,7 @@ import { CartProvider } from './contexts/CartContext';
 // Capture hash at module load before Supabase may clear it
 const _startHash = typeof window !== 'undefined' ? window.location.hash : '';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
 import ProductDetailPage from './pages/ProductDetailPage';
@@ -173,6 +174,7 @@ function AppContent() {
         {currentPage === 'shipping' && <ShippingReturnsPage onNavigate={navigate} />}
         {currentPage === 'contact' && <ContactPage onNavigate={navigate} />}
         {currentPage === 'mystery-boxes' && <MysteryBoxPage onNavigate={navigate} />}
+        <Footer onNavigate={navigate} />
       </div>
     </div>
   );

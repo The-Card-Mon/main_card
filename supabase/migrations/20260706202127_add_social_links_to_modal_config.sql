@@ -1,0 +1,6 @@
+ALTER TABLE modal_config
+  ADD COLUMN IF NOT EXISTS social_instagram TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS social_tiktok    TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS social_facebook  TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS social_twitter   TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS social_youtube   TEXT DEFAULT '';
