@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Search, X, Clock, AlertCircle, Truck, CheckCircle, ChevronRight,
   Package, MapPin, Calendar, DollarSign, Trash2, RotateCcw, Loader2,
@@ -63,13 +63,15 @@ interface SSRate {
   otherCost: number;
 }
 
-export default function AdminOrders() {
+export default function AdminOrders({ highlightOrderId }: { highlightOrderId?: string }) {
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+  const didHighlight = useRef(false);
 
   // Refund state
   const [refundTarget, setRefundTarget] = useState<OrderWithItems | null>(null);
@@ -229,6 +231,17 @@ export default function AdminOrders() {
     setLoading(false);
   };
 
+  // Auto-open and scroll to the highlighted order once data loads
+  useEffect(() => {
+    if (!highlightOrderId || didHighlight.current || orders.length === 0) return;
+    const target = orders.find((o) => o.id === highlightOrderId);
+    if (target) {
+      didHighlight.current = true;
+      openOrder(target);
+      setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    }
+  }, [orders, highlightOrderId]);
+
   const filtered = useMemo(() => {
     let r = [...orders];
     if (search) {
@@ -355,7 +368,12 @@ export default function AdminOrders() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => openOrder(order)}>
+                  <tr
+                    key={order.id}
+                    ref={order.id === highlightOrderId ? (el) => { highlightRef.current = el; } : undefined}
+                    className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${order.id === highlightOrderId ? 'bg-amber-50 ring-2 ring-inset ring-amber-400' : ''}`}
+                    onClick={() => openOrder(order)}
+                  >
                     <td className="px-5 py-3.5">
                       <p className="text-sm font-semibold font-mono text-gray-900">#{order.id.slice(0, 8).toUpperCase()}</p>
                       <p className="text-xs text-gray-400 truncate max-w-[120px]">{order.user_id.slice(0, 12)}...</p>

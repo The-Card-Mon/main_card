@@ -17,10 +17,12 @@ import AdminSupport from '../components/admin/AdminSupport';
 
 interface AdminPageProps {
   onNavigate: (page: string) => void;
+  initialSection?: AdminSection;
+  initialOrderId?: string | null;
 }
 
-export default function AdminPage({ onNavigate }: AdminPageProps) {
-  const [section, setSection] = useState<AdminSection>('dashboard');
+export default function AdminPage({ onNavigate, initialSection, initialOrderId }: AdminPageProps) {
+  const [section, setSection] = useState<AdminSection>(initialSection ?? 'dashboard');
 
   return (
     <AdminLayout
@@ -30,7 +32,7 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
     >
       {section === 'dashboard' && <AdminDashboard />}
       {section === 'products' && <AdminProducts />}
-      {section === 'orders' && <AdminOrders />}
+      {section === 'orders' && <AdminOrders highlightOrderId={initialOrderId ?? undefined} />}
       {section === 'customers' && <AdminCustomers />}
       {section === 'sell-requests' && <AdminSellRequests />}
       {section === 'modal' && <AdminModal />}

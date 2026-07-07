@@ -54,7 +54,7 @@ export default function AdminSettings() {
   useEffect(() => {
     supabase
       .from('modal_config')
-      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord, discord_webhook_orders, discord_webhook_sell, discord_webhook_contact, discord_webhook_support')
+      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord, discord_webhook_orders, discord_webhook_sell, discord_webhook_contact, discord_webhook_support, site_url')
       .eq('id', 1)
       .single()
       .then(({ data }) => {
@@ -69,6 +69,7 @@ export default function AdminSettings() {
           setSocialTwitter(data.social_twitter ?? '');
           setSocialYoutube(data.social_youtube ?? '');
           setSocialDiscord(data.social_discord ?? '');
+          setSiteUrl(data.site_url ?? '');
           setDiscordWebhookOrders(data.discord_webhook_orders   ?? '');
           setDiscordWebhookSell(data.discord_webhook_sell       ?? '');
           setDiscordWebhookContact(data.discord_webhook_contact ?? '');
@@ -112,7 +113,9 @@ export default function AdminSettings() {
 
   const [storeName, setStoreName] = useState('The Card Mon');
   const [storeTagline, setStoreTagline] = useState('Premium Pokemon Cards');
-  const [storeSaved, setStoreSaved] = useState(false);
+  const [storeSaved, setStoreSaved]     = useState(false);
+  const [siteUrl, setSiteUrl]           = useState('');
+  const [siteUrlSaved, setSiteUrlSaved] = useState(false);
 
   // Social links
   const [socialInstagram, setSocialInstagram] = useState('');
@@ -166,6 +169,12 @@ export default function AdminSettings() {
   const saveStore = () => {
     setStoreSaved(true);
     setTimeout(() => setStoreSaved(false), 2500);
+  };
+
+  const saveSiteUrl = async () => {
+    await supabase.from('modal_config').update({ site_url: siteUrl.trim() }).eq('id', 1);
+    setSiteUrlSaved(true);
+    setTimeout(() => setSiteUrlSaved(false), 2500);
   };
 
   const saveSocialLinks = async () => {
@@ -357,6 +366,32 @@ export default function AdminSettings() {
             {/* Store Settings */}
             {activeSection === 'store' && (
               <>
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                    <Globe className="w-5 h-5 text-gray-500" />
+                    <h3 className="font-semibold text-gray-900">Site URL</h3>
+                  </div>
+                  <div className="p-6 space-y-3">
+                    <p className="text-sm text-gray-500">
+                      Your live site URL. Used to generate clickable links in Discord order notifications.
+                    </p>
+                    <input
+                      type="url"
+                      value={siteUrl}
+                      onChange={(e) => setSiteUrl(e.target.value)}
+                      placeholder="https://yoursite.com"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
+                    />
+                    <button
+                      onClick={saveSiteUrl}
+                      className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      {siteUrlSaved ? <CheckCircle className="w-4 h-4 text-green-400" /> : null}
+                      {siteUrlSaved ? 'Saved!' : 'Save URL'}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                     <Globe className="w-5 h-5 text-gray-500" />

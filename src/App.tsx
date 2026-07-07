@@ -4,6 +4,7 @@ import { CartProvider } from './contexts/CartContext';
 
 // Capture hash at module load before Supabase may clear it
 const _startHash = typeof window !== 'undefined' ? window.location.hash : '';
+
 import Header from './components/Header';
 import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
@@ -12,7 +13,6 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import CartPage from './pages/CartPage';
 import AdminPage from './pages/AdminPage';
 import AuthPage from './pages/AuthPage';
-import OrdersPage from './pages/OrdersPage';
 import SellPage from './pages/SellPage';
 import CheckoutPage from './pages/CheckoutPage';
 import AboutPage from './pages/AboutPage';
@@ -25,6 +25,7 @@ import MysteryBoxPage from './pages/MysteryBoxPage';
 import PromoModal from './components/PromoModal';
 import { supabase } from './lib/supabase';
 import { AlertTriangle } from 'lucide-react';
+import type { AdminSection } from './components/admin/AdminLayout';
 
 interface MaintenanceState {
   enabled: boolean;
@@ -33,19 +34,49 @@ interface MaintenanceState {
   bgImageUrl: string;
 }
 
+function getInitialPage(): string {
+  if (_startHash.includes('type=invite') || _startHash.includes('type=recovery')) return 'auth';
+  const params = new URLSearchParams(window.location.search);
+  const page = params.get('page');
+  const valid = ['home', 'catalog', 'cart', 'auth', 'orders', 'account', 'sell', 'checkout',
+                 'about', 'faq', 'shipping', 'contact', 'mystery-boxes', 'admin'];
+  return page && valid.includes(page) ? page : 'home';
+}
+
+function pushUrl(page: string, extra?: Record<string, string>) {
+  const params = new URLSearchParams();
+  params.set('page', page);
+  if (extra) Object.entries(extra).forEach(([k, v]) => params.set(k, v));
+  const qs = page === 'home' ? '' : `?${params.toString()}`;
+  window.history.pushState({}, '', qs || '/');
+}
+
 function AppContent() {
-  const [currentPage, setCurrentPage] = useState(() => {
-    // Route invite/password-recovery links to the auth page immediately
-    if (_startHash.includes('type=invite') || _startHash.includes('type=recovery')) return 'auth';
-    return 'home';
-  });
+  const [currentPage, setCurrentPage] = useState(getInitialPage);
   const [productId, setProductId] = useState<string | null>(null);
   const [catalogType, setCatalogType] = useState<string>('');
+
+  // Admin deep-link: ?page=admin&section=orders&order=UUID
+  const [initialAdminSection] = useState<AdminSection | undefined>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('section') as AdminSection) ?? undefined;
+  });
+  const [initialOrderId] = useState<string | null>(() => {
+    return new URLSearchParams(window.location.search).get('order');
+  });
+
   const { isAdmin, isStaff, loading, user, needsPasswordSetup } = useAuth();
 
   useEffect(() => {
     if (needsPasswordSetup) setCurrentPage('auth');
   }, [needsPasswordSetup]);
+
+  // Sync state when browser back/forward is used
+  useEffect(() => {
+    const onPop = () => setCurrentPage(getInitialPage());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const [maintenance, setMaintenance] = useState<MaintenanceState>({
     enabled: false,
@@ -80,26 +111,31 @@ function AppContent() {
       const type = page.split('=')[1];
       setCatalogType(type);
       setCurrentPage('catalog');
+      pushUrl('catalog', { type });
       return;
     }
     if (page === 'admin' && !isAdmin && !isStaff) return;
     if ((page === 'orders' || page === 'account' || page === 'mystery-boxes') && !user) {
       setCurrentPage('auth');
+      pushUrl('auth');
       return;
     }
     if (page === 'checkout' && !user) {
       setCurrentPage('auth');
+      pushUrl('auth');
       return;
     }
     setCatalogType('');
     setCurrentPage(page);
     setProductId(null);
+    pushUrl(page);
     window.scrollTo(0, 0);
   };
 
   const viewProduct = (id: string) => {
     setProductId(id);
     setCurrentPage('product');
+    pushUrl('product', { id });
     window.scrollTo(0, 0);
   };
 
@@ -121,8 +157,7 @@ function AppContent() {
           bgImageUrl: maintenance.bgImageUrl,
         }}
         onStaffAccess={() => {
-          // Auth state change will re-render with isAdmin = true, which bypasses this gate
-          setMaintenance((prev) => ({ ...prev })); // trigger re-render
+          setMaintenance((prev) => ({ ...prev }));
         }}
       />
     );
@@ -139,7 +174,11 @@ function AppContent() {
           </div>
         )}
         <div className={maintenance.enabled ? 'pt-8' : ''}>
-          <AdminPage onNavigate={navigate} />
+          <AdminPage
+            onNavigate={navigate}
+            initialSection={initialAdminSection}
+            initialOrderId={initialOrderId}
+          />
         </div>
       </>
     );
@@ -166,7 +205,7 @@ function AppContent() {
         {currentPage === 'cart' && <CartPage onNavigate={navigate} />}
         {currentPage === 'auth' && <AuthPage onNavigate={navigate} />}
         {currentPage === 'orders' && user && <AccountPage onNavigate={navigate} initialTab="orders" />}
-      {currentPage === 'account' && user && <AccountPage onNavigate={navigate} />}
+        {currentPage === 'account' && user && <AccountPage onNavigate={navigate} />}
         {currentPage === 'sell' && <SellPage onNavigate={navigate} />}
         {currentPage === 'checkout' && <CheckoutPage onNavigate={navigate} />}
         {currentPage === 'about' && <AboutPage onNavigate={navigate} />}
