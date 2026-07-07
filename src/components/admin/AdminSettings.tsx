@@ -54,15 +54,15 @@ export default function AdminSettings() {
   useEffect(() => {
     supabase
       .from('modal_config')
-      .select('enabled, title, body_text, bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord, discord_webhook_orders, discord_webhook_sell, discord_webhook_contact, discord_webhook_support, discord_webhook_new_users, discord_webhook_payments, discord_webhook_failed_payments, discord_webhook_shipping_labels, discord_webhook_tracking, discord_webhook_delivered, discord_webhook_offer_accepted, discord_webhook_inventory, discord_webhook_reviews, discord_webhook_errors, discord_webhook_api_errors, discord_webhook_daily_sales, discord_webhook_weekly_analytics, site_url')
+      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord, discord_webhook_orders, discord_webhook_sell, discord_webhook_contact, discord_webhook_support, discord_webhook_new_users, discord_webhook_payments, discord_webhook_failed_payments, discord_webhook_shipping_labels, discord_webhook_tracking, discord_webhook_delivered, discord_webhook_offer_accepted, discord_webhook_inventory, discord_webhook_reviews, discord_webhook_errors, discord_webhook_api_errors, discord_webhook_daily_sales, discord_webhook_weekly_analytics, site_url')
       .eq('id', 1)
       .single()
       .then(({ data }) => {
         if (data) {
-          setMaintEnabled(data.enabled ?? false);
-          setMaintTitle(data.title ?? "We'll Be Right Back");
-          setMaintMessage(data.body_text ?? '');
-          setMaintBg(data.bg_image_url ?? '');
+          setMaintEnabled(data.maintenance_enabled ?? false);
+          setMaintTitle(data.maintenance_title ?? "We'll Be Right Back");
+          setMaintMessage(data.maintenance_message ?? '');
+          setMaintBg(data.maintenance_bg_image_url ?? '');
           setSocialInstagram(data.social_instagram ?? '');
           setSocialTiktok(data.social_tiktok ?? '');
           setSocialFacebook(data.social_facebook ?? '');
@@ -95,10 +95,10 @@ export default function AdminSettings() {
   const saveMaintenance = async () => {
     setMaintSaving(true);
     await supabase.from('modal_config').update({
-      enabled:    maintEnabled,
-      title:      maintTitle,
-      body_text:  maintMessage,
-      bg_image_url: maintBg,
+      maintenance_enabled:      maintEnabled,
+      maintenance_title:        maintTitle,
+      maintenance_message:      maintMessage,
+      maintenance_bg_image_url: maintBg,
     }).eq('id', 1);
     setMaintSaving(false);
     setMaintSaved(true);
@@ -107,7 +107,7 @@ export default function AdminSettings() {
 
   const toggleMaintenance = async (val: boolean) => {
     setMaintEnabled(val);
-    await supabase.from('modal_config').update({ enabled: val }).eq('id', 1);
+    await supabase.from('modal_config').update({ maintenance_enabled: val }).eq('id', 1);
   };
 
   const testEbayConnection = async () => {

@@ -234,6 +234,11 @@ Deno.serve(async (req: Request) => {
 
     return respond({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
-    return respond({ error: (err as Error).message }, 500);
+    const msg = (err as Error).message ?? "Unknown error";
+    try {
+      const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await supabase.from("error_logs").insert({ source: "shipstation", message: msg, context: {} });
+    } catch { /* best-effort */ }
+    return respond({ error: msg }, 500);
   }
 });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Capture hash at module load before Supabase may clear it
 const _startHash = typeof window !== 'undefined' ? window.location.hash : '';
@@ -225,10 +226,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <AppContent />
-      </CartProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <CartProvider>
+          <AppContent />
+        </CartProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

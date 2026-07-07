@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +8,15 @@ const corsHeaders = {
 };
 
 const POKETRACE_API_KEY = Deno.env.get("POKETRACE_API_KEY");
+
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+);
+
+async function logApiError(message: string, context?: Record<string, unknown>) {
+  await supabase.from("error_logs").insert({ source: "tcg-pricing", message, context: context ?? {} });
+}
 
 function ok(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -81,12 +91,14 @@ Deno.serve(async (req: Request) => {
       headers: { "X-API-Key": POKETRACE_API_KEY, Accept: "application/json" },
     });
   } catch (err: any) {
+    await logApiError(`Network error reaching PokéTrace API: ${err.message}`);
     return ok({ error: `Network error: ${err.message}` });
   }
 
   const rawText = await res.text();
 
   if (!res.ok) {
+    await logApiError(`PokéTrace API error ${res.status}`, { response: rawText.slice(0, 500) });
     return ok({ error: `PokéTrace API error ${res.status}: ${rawText.slice(0, 200)}` });
   }
 
