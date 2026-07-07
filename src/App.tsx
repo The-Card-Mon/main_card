@@ -64,6 +64,9 @@ function AppContent() {
   const [initialOrderId] = useState<string | null>(() => {
     return new URLSearchParams(window.location.search).get('order');
   });
+  const [initialSubmissionId] = useState<string | null>(() => {
+    return new URLSearchParams(window.location.search).get('submission');
+  });
 
   const { isAdmin, isStaff, loading, user, needsPasswordSetup } = useAuth();
 
@@ -178,6 +181,7 @@ function AppContent() {
             onNavigate={navigate}
             initialSection={initialAdminSection}
             initialOrderId={initialOrderId}
+            initialSubmissionId={initialSubmissionId}
           />
         </div>
       </>

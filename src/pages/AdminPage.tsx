@@ -19,9 +19,10 @@ interface AdminPageProps {
   onNavigate: (page: string) => void;
   initialSection?: AdminSection;
   initialOrderId?: string | null;
+  initialSubmissionId?: string | null;
 }
 
-export default function AdminPage({ onNavigate, initialSection, initialOrderId }: AdminPageProps) {
+export default function AdminPage({ onNavigate, initialSection, initialOrderId, initialSubmissionId }: AdminPageProps) {
   const [section, setSection] = useState<AdminSection>(initialSection ?? 'dashboard');
 
   return (
@@ -34,7 +35,7 @@ export default function AdminPage({ onNavigate, initialSection, initialOrderId }
       {section === 'products' && <AdminProducts />}
       {section === 'orders' && <AdminOrders highlightOrderId={initialOrderId ?? undefined} />}
       {section === 'customers' && <AdminCustomers />}
-      {section === 'sell-requests' && <AdminSellRequests />}
+      {section === 'sell-requests' && <AdminSellRequests highlightSubmissionId={initialSubmissionId ?? undefined} />}
       {section === 'modal' && <AdminModal />}
       {section === 'discounts' && <AdminDiscounts />}
       {section === 'social' && <AdminSocial />}

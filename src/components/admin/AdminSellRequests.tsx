@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Search,
   X,
@@ -75,13 +75,15 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default function AdminSellRequests() {
+export default function AdminSellRequests({ highlightSubmissionId }: { highlightSubmissionId?: string }) {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [selected, setSelected] = useState<Submission | null>(null);
+  const highlightRef = useRef<HTMLButtonElement | null>(null);
+  const didHighlight = useRef(false);
 
   // Detail panel state
   const [offerAmount, setOfferAmount] = useState('');
@@ -98,6 +100,16 @@ export default function AdminSellRequests() {
     setSubmissions((data as Submission[]) ?? []);
     setLoading(false);
   };
+
+  useEffect(() => {
+    if (!highlightSubmissionId || didHighlight.current || submissions.length === 0) return;
+    const target = submissions.find((s) => s.id === highlightSubmissionId);
+    if (target) {
+      didHighlight.current = true;
+      openDetail(target);
+      setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    }
+  }, [submissions, highlightSubmissionId]);
 
   const filtered = useMemo(() => {
     let r = [...submissions];
@@ -231,10 +243,11 @@ export default function AdminSellRequests() {
             filtered.map((sub) => (
               <button
                 key={sub.id}
+                ref={sub.id === highlightSubmissionId ? (el) => { highlightRef.current = el; } : undefined}
                 onClick={() => openDetail(sub)}
                 className={`w-full flex items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-gray-50 ${
                   selected?.id === sub.id ? 'bg-red-50 border-l-2 border-red-500' : ''
-                }`}
+                } ${sub.id === highlightSubmissionId && selected?.id !== sub.id ? 'ring-2 ring-inset ring-amber-400 bg-amber-50' : ''}`}
               >
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
                   sub.submission_type === 'individual' ? 'bg-orange-100' : 'bg-blue-100'
