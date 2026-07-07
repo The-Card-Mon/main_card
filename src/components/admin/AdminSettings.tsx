@@ -54,7 +54,7 @@ export default function AdminSettings() {
   useEffect(() => {
     supabase
       .from('modal_config')
-      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord, discord_webhook_orders, discord_webhook_sell, discord_webhook_contact, discord_webhook_support, site_url')
+      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord, discord_webhook_orders, discord_webhook_sell, discord_webhook_contact, discord_webhook_support, discord_webhook_new_users, discord_webhook_payments, discord_webhook_failed_payments, discord_webhook_shipping_labels, discord_webhook_tracking, discord_webhook_delivered, discord_webhook_offer_accepted, discord_webhook_inventory, discord_webhook_reviews, discord_webhook_errors, discord_webhook_api_errors, discord_webhook_daily_sales, discord_webhook_weekly_analytics, site_url')
       .eq('id', 1)
       .single()
       .then(({ data }) => {
@@ -70,10 +70,23 @@ export default function AdminSettings() {
           setSocialYoutube(data.social_youtube ?? '');
           setSocialDiscord(data.social_discord ?? '');
           setSiteUrl(data.site_url ?? '');
-          setDiscordWebhookOrders(data.discord_webhook_orders   ?? '');
-          setDiscordWebhookSell(data.discord_webhook_sell       ?? '');
-          setDiscordWebhookContact(data.discord_webhook_contact ?? '');
-          setDiscordWebhookSupport(data.discord_webhook_support ?? '');
+          setDiscordWebhookOrders(data.discord_webhook_orders                   ?? '');
+          setDiscordWebhookSell(data.discord_webhook_sell                       ?? '');
+          setDiscordWebhookContact(data.discord_webhook_contact                 ?? '');
+          setDiscordWebhookSupport(data.discord_webhook_support                 ?? '');
+          setDiscordWebhookNewUsers(data.discord_webhook_new_users              ?? '');
+          setDiscordWebhookPayments(data.discord_webhook_payments               ?? '');
+          setDiscordWebhookFailedPayments(data.discord_webhook_failed_payments  ?? '');
+          setDiscordWebhookShippingLabels(data.discord_webhook_shipping_labels  ?? '');
+          setDiscordWebhookTracking(data.discord_webhook_tracking               ?? '');
+          setDiscordWebhookDelivered(data.discord_webhook_delivered             ?? '');
+          setDiscordWebhookOfferAccepted(data.discord_webhook_offer_accepted    ?? '');
+          setDiscordWebhookInventory(data.discord_webhook_inventory             ?? '');
+          setDiscordWebhookReviews(data.discord_webhook_reviews                 ?? '');
+          setDiscordWebhookErrors(data.discord_webhook_errors                   ?? '');
+          setDiscordWebhookApiErrors(data.discord_webhook_api_errors            ?? '');
+          setDiscordWebhookDailySales(data.discord_webhook_daily_sales          ?? '');
+          setDiscordWebhookWeeklyAnalytics(data.discord_webhook_weekly_analytics ?? '');
         }
         setMaintLoaded(true);
       });
@@ -128,14 +141,27 @@ export default function AdminSettings() {
   const [socialSaved, setSocialSaved]         = useState(false);
 
   // Discord webhook notifications — one URL per event type
-  const [discordWebhookOrders,  setDiscordWebhookOrders]  = useState('');
-  const [discordWebhookSell,    setDiscordWebhookSell]    = useState('');
-  const [discordWebhookContact, setDiscordWebhookContact] = useState('');
-  const [discordWebhookSupport, setDiscordWebhookSupport] = useState('');
-  const [discordSaving, setDiscordSaving]     = useState<string | null>(null);
-  const [discordSaved,  setDiscordSaved]      = useState<string | null>(null);
-  const [discordTesting, setDiscordTesting]   = useState<string | null>(null);
-  const [discordTestResult, setDiscordTestResult] = useState<{ key: string; ok: boolean; msg: string } | null>(null);
+  const [discordWebhookOrders,          setDiscordWebhookOrders]          = useState('');
+  const [discordWebhookSell,            setDiscordWebhookSell]            = useState('');
+  const [discordWebhookContact,         setDiscordWebhookContact]         = useState('');
+  const [discordWebhookSupport,         setDiscordWebhookSupport]         = useState('');
+  const [discordWebhookNewUsers,        setDiscordWebhookNewUsers]        = useState('');
+  const [discordWebhookPayments,        setDiscordWebhookPayments]        = useState('');
+  const [discordWebhookFailedPayments,  setDiscordWebhookFailedPayments]  = useState('');
+  const [discordWebhookShippingLabels,  setDiscordWebhookShippingLabels]  = useState('');
+  const [discordWebhookTracking,        setDiscordWebhookTracking]        = useState('');
+  const [discordWebhookDelivered,       setDiscordWebhookDelivered]       = useState('');
+  const [discordWebhookOfferAccepted,   setDiscordWebhookOfferAccepted]   = useState('');
+  const [discordWebhookInventory,       setDiscordWebhookInventory]       = useState('');
+  const [discordWebhookReviews,         setDiscordWebhookReviews]         = useState('');
+  const [discordWebhookErrors,          setDiscordWebhookErrors]          = useState('');
+  const [discordWebhookApiErrors,       setDiscordWebhookApiErrors]       = useState('');
+  const [discordWebhookDailySales,      setDiscordWebhookDailySales]      = useState('');
+  const [discordWebhookWeeklyAnalytics, setDiscordWebhookWeeklyAnalytics] = useState('');
+  const [discordSaving,      setDiscordSaving]      = useState<string | null>(null);
+  const [discordSaved,       setDiscordSaved]       = useState<string | null>(null);
+  const [discordTesting,     setDiscordTesting]     = useState<string | null>(null);
+  const [discordTestResult,  setDiscordTestResult]  = useState<{ key: string; ok: boolean; msg: string } | null>(null);
 
   const saveName = async () => {
     if (!user) return;
@@ -194,16 +220,42 @@ export default function AdminSettings() {
 
   const saveDiscordWebhook = async (key: string) => {
     const colMap: Record<string, string> = {
-      orders:  'discord_webhook_orders',
-      sell:    'discord_webhook_sell',
-      contact: 'discord_webhook_contact',
-      support: 'discord_webhook_support',
+      orders:           'discord_webhook_orders',
+      sell:             'discord_webhook_sell',
+      contact:          'discord_webhook_contact',
+      support:          'discord_webhook_support',
+      new_users:        'discord_webhook_new_users',
+      payments:         'discord_webhook_payments',
+      failed_payments:  'discord_webhook_failed_payments',
+      shipping_labels:  'discord_webhook_shipping_labels',
+      tracking:         'discord_webhook_tracking',
+      delivered:        'discord_webhook_delivered',
+      offer_accepted:   'discord_webhook_offer_accepted',
+      inventory:        'discord_webhook_inventory',
+      reviews:          'discord_webhook_reviews',
+      errors:           'discord_webhook_errors',
+      api_errors:       'discord_webhook_api_errors',
+      daily_sales:      'discord_webhook_daily_sales',
+      weekly_analytics: 'discord_webhook_weekly_analytics',
     };
     const urlMap: Record<string, string> = {
-      orders:  discordWebhookOrders,
-      sell:    discordWebhookSell,
-      contact: discordWebhookContact,
-      support: discordWebhookSupport,
+      orders:           discordWebhookOrders,
+      sell:             discordWebhookSell,
+      contact:          discordWebhookContact,
+      support:          discordWebhookSupport,
+      new_users:        discordWebhookNewUsers,
+      payments:         discordWebhookPayments,
+      failed_payments:  discordWebhookFailedPayments,
+      shipping_labels:  discordWebhookShippingLabels,
+      tracking:         discordWebhookTracking,
+      delivered:        discordWebhookDelivered,
+      offer_accepted:   discordWebhookOfferAccepted,
+      inventory:        discordWebhookInventory,
+      reviews:          discordWebhookReviews,
+      errors:           discordWebhookErrors,
+      api_errors:       discordWebhookApiErrors,
+      daily_sales:      discordWebhookDailySales,
+      weekly_analytics: discordWebhookWeeklyAnalytics,
     };
     setDiscordSaving(key);
     await supabase.from('modal_config').update({ [colMap[key]]: urlMap[key] }).eq('id', 1);
@@ -658,59 +710,122 @@ export default function AdminSettings() {
                   </div>
                   <div className="px-6 py-4">
                     <p className="text-sm text-gray-500">
-                      Assign a separate Discord webhook URL to each event type so each notification routes to its own channel.
-                      Notifications fire via database triggers — no browser tab needed.
+                      Assign a separate Discord webhook URL to each event so notifications route to the right channel.
+                      Database triggers fire automatically — no browser tab needed. Set your <strong className="text-gray-700">Site URL</strong> in Store Settings first to get clickable links in every notification.
                     </p>
                   </div>
                 </div>
 
-                {[
-                  { key: 'orders',  emoji: '🛒', label: 'New Order Placed',   desc: 'Fires when a customer completes checkout', color: 'green',  value: discordWebhookOrders,  set: setDiscordWebhookOrders  },
-                  { key: 'sell',    emoji: '📥', label: 'New Sell Submission', desc: 'Fires when someone submits cards to sell',  color: 'amber',  value: discordWebhookSell,    set: setDiscordWebhookSell    },
-                  { key: 'contact', emoji: '✉️', label: 'New Contact Message', desc: 'Fires on every contact form submission',    color: 'blue',   value: discordWebhookContact, set: setDiscordWebhookContact },
-                  { key: 'support', emoji: '🎫', label: 'New Support Ticket',  desc: 'Fires when a support ticket is opened',    color: 'purple', value: discordWebhookSupport, set: setDiscordWebhookSupport },
-                ].map(({ key, emoji, label, desc, value, set }) => (
-                  <div key={key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                      <span className="text-xl leading-none">{emoji}</span>
-                      <div>
-                        <p className="font-semibold text-gray-900 text-sm">{label}</p>
-                        <p className="text-xs text-gray-400">{desc}</p>
-                      </div>
-                      {value && <CheckCircle className="w-4 h-4 text-green-500 ml-auto flex-shrink-0" />}
+                {/* Group helper component rendered inline */}
+                {(
+                  [
+                    {
+                      group: 'Users & Accounts',
+                      items: [
+                        { key: 'new_users',   emoji: '📋', label: 'New Account Created', channel: '📋┃new-users',         desc: 'User registers',                       value: discordWebhookNewUsers,        set: setDiscordWebhookNewUsers,        trigger: 'DB trigger' },
+                      ],
+                    },
+                    {
+                      group: 'Orders & Payments',
+                      items: [
+                        { key: 'orders',          emoji: '🛒', label: 'Order Placed',         channel: '🛒┃new-orders',         desc: 'Customer completes checkout',          value: discordWebhookOrders,          set: setDiscordWebhookOrders,          trigger: 'DB trigger' },
+                        { key: 'payments',        emoji: '💰', label: 'Order Paid',            channel: '💰┃payments',           desc: 'Payment confirmed on an order',        value: discordWebhookPayments,        set: setDiscordWebhookPayments,        trigger: 'DB trigger' },
+                        { key: 'failed_payments', emoji: '🚨', label: 'Payment Failed',        channel: '🚨┃failed-payments',    desc: 'Payment status flips to failed',       value: discordWebhookFailedPayments,  set: setDiscordWebhookFailedPayments,  trigger: 'DB trigger' },
+                      ],
+                    },
+                    {
+                      group: 'Shipping & Delivery',
+                      items: [
+                        { key: 'shipping_labels', emoji: '📦', label: 'Shipping Label Created', channel: '📦┃shipping-labels',   desc: 'Tracking number first added to order', value: discordWebhookShippingLabels,  set: setDiscordWebhookShippingLabels,  trigger: 'DB trigger' },
+                        { key: 'tracking',        emoji: '🚚', label: 'Tracking Updated',        channel: '🚚┃tracking-updates',  desc: 'Tracking number changed on an order',  value: discordWebhookTracking,        set: setDiscordWebhookTracking,        trigger: 'DB trigger' },
+                        { key: 'delivered',       emoji: '📬', label: 'Package Delivered',       channel: '📬┃packages-delivered',desc: 'Order status set to delivered',         value: discordWebhookDelivered,       set: setDiscordWebhookDelivered,       trigger: 'DB trigger' },
+                      ],
+                    },
+                    {
+                      group: 'Buying & Selling',
+                      items: [
+                        { key: 'sell',           emoji: '💵', label: 'Seller Submitted Cards', channel: '💵┃seller-submissions', desc: 'Customer submits cards to sell',       value: discordWebhookSell,            set: setDiscordWebhookSell,            trigger: 'DB trigger' },
+                        { key: 'offer_accepted', emoji: '📦', label: 'Buy Offer Accepted',     channel: '📦┃orders',             desc: 'Seller accepts your offer',            value: discordWebhookOfferAccepted,   set: setDiscordWebhookOfferAccepted,   trigger: 'DB trigger' },
+                      ],
+                    },
+                    {
+                      group: 'Inventory & Reviews',
+                      items: [
+                        { key: 'inventory', emoji: '📑', label: 'Inventory Low',  channel: '📑┃inventory', desc: 'Product quantity drops to 3 or fewer', value: discordWebhookInventory, set: setDiscordWebhookInventory, trigger: 'DB trigger' },
+                        { key: 'reviews',   emoji: '⭐', label: 'New Review',     channel: '⭐┃reviews',    desc: 'Customer leaves a product review',     value: discordWebhookReviews,   set: setDiscordWebhookReviews,   trigger: 'Future' },
+                      ],
+                    },
+                    {
+                      group: 'Errors & Monitoring',
+                      items: [
+                        { key: 'errors',     emoji: '⚠️', label: 'Website Error', channel: '⚠️┃errors',     desc: 'Frontend error boundary fires',        value: discordWebhookErrors,    set: setDiscordWebhookErrors,    trigger: 'Edge fn' },
+                        { key: 'api_errors', emoji: '🔑', label: 'API Error',      channel: '🔑┃api-status', desc: 'Edge function reports an API failure', value: discordWebhookApiErrors, set: setDiscordWebhookApiErrors, trigger: 'Edge fn' },
+                      ],
+                    },
+                    {
+                      group: 'Reports & Analytics',
+                      items: [
+                        { key: 'daily_sales',       emoji: '📊', label: 'Daily Sales Summary', channel: '📊┃daily-sales', desc: 'Automated daily revenue digest',    value: discordWebhookDailySales,      set: setDiscordWebhookDailySales,      trigger: 'Scheduled' },
+                        { key: 'weekly_analytics',  emoji: '📈', label: 'Weekly Analytics',    channel: '📈┃analytics',   desc: 'Weekly traffic & sales breakdown', value: discordWebhookWeeklyAnalytics, set: setDiscordWebhookWeeklyAnalytics, trigger: 'Scheduled' },
+                        { key: 'contact',           emoji: '✉️', label: 'New Contact Message', channel: 'contact',        desc: 'Contact form submission',           value: discordWebhookContact,         set: setDiscordWebhookContact,         trigger: 'DB trigger' },
+                        { key: 'support',           emoji: '🎫', label: 'New Support Ticket',  channel: 'support',        desc: 'Support ticket opened',             value: discordWebhookSupport,         set: setDiscordWebhookSupport,         trigger: 'DB trigger' },
+                      ],
+                    },
+                  ] as const
+                ).map(({ group, items }) => (
+                  <div key={group} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
+                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">{group}</h4>
                     </div>
-                    <div className="p-6 space-y-3">
-                      <input
-                        type="url"
-                        value={value}
-                        onChange={(e) => set(e.target.value)}
-                        placeholder="https://discord.com/api/webhooks/..."
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
-                      />
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => saveDiscordWebhook(key)}
-                          disabled={discordSaving === key}
-                          className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                          {discordSaving === key ? <Loader2 className="w-4 h-4 animate-spin" /> : discordSaved === key ? <CheckCircle className="w-4 h-4 text-green-400" /> : null}
-                          {discordSaving === key ? 'Saving...' : discordSaved === key ? 'Saved!' : 'Save'}
-                        </button>
-                        <button
-                          onClick={() => testDiscordWebhook(key, value, label)}
-                          disabled={discordTesting === key || !value}
-                          className="flex items-center gap-2 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                          {discordTesting === key ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          {discordTesting === key ? 'Sending...' : 'Test'}
-                        </button>
-                        {discordTestResult?.key === key && (
-                          <span className={`text-sm font-medium flex items-center gap-1.5 ${discordTestResult.ok ? 'text-green-600' : 'text-red-600'}`}>
-                            {discordTestResult.ok ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                            {discordTestResult.msg}
-                          </span>
-                        )}
-                      </div>
+                    <div className="divide-y divide-gray-50">
+                      {(items as any[]).map(({ key, emoji, label, channel, desc, value, set, trigger }: any) => (
+                        <div key={key} className="p-5">
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-lg leading-none">{emoji}</span>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">{label}</p>
+                                <p className="text-xs text-gray-400">{desc} · <span className="font-mono">{channel}</span></p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${trigger === 'DB trigger' ? 'bg-green-50 text-green-700 border border-green-200' : trigger === 'Scheduled' ? 'bg-blue-50 text-blue-700 border border-blue-200' : trigger === 'Future' ? 'bg-gray-100 text-gray-400 border border-gray-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>{trigger}</span>
+                              {value && <CheckCircle className="w-4 h-4 text-green-500" />}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="url"
+                              value={value}
+                              onChange={(e) => set(e.target.value)}
+                              placeholder="https://discord.com/api/webhooks/..."
+                              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono min-w-0"
+                            />
+                            <button
+                              onClick={() => saveDiscordWebhook(key)}
+                              disabled={discordSaving === key}
+                              className="flex-shrink-0 flex items-center gap-1.5 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white px-3.5 py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              {discordSaving === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : discordSaved === key ? <CheckCircle className="w-3.5 h-3.5 text-green-400" /> : null}
+                              {discordSaving === key ? 'Saving' : discordSaved === key ? 'Saved!' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => testDiscordWebhook(key, value, label)}
+                              disabled={discordTesting === key || !value}
+                              className="flex-shrink-0 flex items-center gap-1.5 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 text-indigo-700 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              {discordTesting === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                              {discordTesting === key ? '...' : 'Test'}
+                            </button>
+                          </div>
+                          {discordTestResult?.key === key && (
+                            <p className={`mt-2 text-xs font-medium flex items-center gap-1 ${discordTestResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+                              {discordTestResult.ok ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                              {discordTestResult.msg}
+                            </p>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
