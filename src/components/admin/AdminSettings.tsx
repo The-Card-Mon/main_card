@@ -160,6 +160,7 @@ export default function AdminSettings() {
   const [discordWebhookWeeklyAnalytics, setDiscordWebhookWeeklyAnalytics] = useState('');
   const [discordSaving,      setDiscordSaving]      = useState<string | null>(null);
   const [discordSaved,       setDiscordSaved]       = useState<string | null>(null);
+  const [discordError,       setDiscordError]       = useState<string | null>(null);
   const [discordTesting,     setDiscordTesting]     = useState<string | null>(null);
   const [discordTestResult,  setDiscordTestResult]  = useState<{ key: string; ok: boolean; msg: string } | null>(null);
 
@@ -258,10 +259,16 @@ export default function AdminSettings() {
       weekly_analytics: discordWebhookWeeklyAnalytics,
     };
     setDiscordSaving(key);
-    await supabase.from('modal_config').update({ [colMap[key]]: urlMap[key] }).eq('id', 1);
+    setDiscordError(null);
+    const { error } = await supabase.from('modal_config').update({ [colMap[key]]: urlMap[key] }).eq('id', 1);
     setDiscordSaving(null);
-    setDiscordSaved(key);
-    setTimeout(() => setDiscordSaved(null), 2500);
+    if (error) {
+      setDiscordError(`${key}:${error.message}`);
+      setTimeout(() => setDiscordError(null), 6000);
+    } else {
+      setDiscordSaved(key);
+      setTimeout(() => setDiscordSaved(null), 2500);
+    }
   };
 
   const testDiscordWebhook = async (key: string, url: string, label: string) => {
@@ -818,6 +825,12 @@ export default function AdminSettings() {
                               {discordTesting === key ? '...' : 'Test'}
                             </button>
                           </div>
+                          {discordError?.startsWith(`${key}:`) && (
+                            <p className="mt-2 text-xs font-medium flex items-center gap-1 text-red-600">
+                              <XCircle className="w-3.5 h-3.5" />
+                              {discordError.slice(key.length + 1)}
+                            </p>
+                          )}
                           {discordTestResult?.key === key && (
                             <p className={`mt-2 text-xs font-medium flex items-center gap-1 ${discordTestResult.ok ? 'text-green-600' : 'text-red-600'}`}>
                               {discordTestResult.ok ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
