@@ -20,12 +20,14 @@ import {
   Wrench,
   Eye,
   Share2,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 
 export default function AdminSettings() {
   const { user, profile } = useAuth();
 
-  const [activeSection, setActiveSection] = useState<'account' | 'store' | 'security' | 'social' | 'ebay' | 'maintenance'>('account');
+  const [activeSection, setActiveSection] = useState<'account' | 'store' | 'security' | 'social' | 'discord' | 'ebay' | 'maintenance'>('account');
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [nameSaved, setNameSaved] = useState(false);
@@ -52,7 +54,7 @@ export default function AdminSettings() {
   useEffect(() => {
     supabase
       .from('modal_config')
-      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord')
+      .select('maintenance_enabled, maintenance_title, maintenance_message, maintenance_bg_image_url, social_instagram, social_tiktok, social_facebook, social_twitter, social_youtube, social_discord, discord_webhook_url')
       .eq('id', 1)
       .single()
       .then(({ data }) => {
@@ -67,6 +69,7 @@ export default function AdminSettings() {
           setSocialTwitter(data.social_twitter ?? '');
           setSocialYoutube(data.social_youtube ?? '');
           setSocialDiscord(data.social_discord ?? '');
+          setDiscordWebhook(data.discord_webhook_url ?? '');
         }
         setMaintLoaded(true);
       });
@@ -118,6 +121,13 @@ export default function AdminSettings() {
   const [socialSaving, setSocialSaving]       = useState(false);
   const [socialSaved, setSocialSaved]         = useState(false);
 
+  // Discord webhook notifications
+  const [discordWebhook, setDiscordWebhook]   = useState('');
+  const [discordSaving, setDiscordSaving]     = useState(false);
+  const [discordSaved, setDiscordSaved]       = useState(false);
+  const [discordTesting, setDiscordTesting]   = useState(false);
+  const [discordTestResult, setDiscordTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
   const saveName = async () => {
     if (!user) return;
     await supabase.from('profiles').update({ full_name: fullName }).eq('id', user.id);
@@ -167,10 +177,45 @@ export default function AdminSettings() {
     setTimeout(() => setSocialSaved(false), 2500);
   };
 
+  const saveDiscordWebhook = async () => {
+    setDiscordSaving(true);
+    await supabase.from('modal_config').update({ discord_webhook_url: discordWebhook }).eq('id', 1);
+    setDiscordSaving(false);
+    setDiscordSaved(true);
+    setTimeout(() => setDiscordSaved(false), 2500);
+  };
+
+  const testDiscordWebhook = async () => {
+    if (!discordWebhook) return;
+    setDiscordTesting(true);
+    setDiscordTestResult(null);
+    try {
+      const res = await fetch(discordWebhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          embeds: [{
+            title: ':white_check_mark: Webhook Test',
+            description: 'Discord notifications are connected and working.',
+            color: 3066993,
+            footer: { text: 'The Card Mon Admin' },
+          }],
+        }),
+      });
+      setDiscordTestResult(res.ok ? { ok: true, msg: 'Test message sent!' } : { ok: false, msg: `Discord returned ${res.status}` });
+    } catch (err: any) {
+      setDiscordTestResult({ ok: false, msg: err.message });
+    } finally {
+      setDiscordTesting(false);
+      setTimeout(() => setDiscordTestResult(null), 5000);
+    }
+  };
+
   const sections = [
     { id: 'account' as const,     label: 'Account',          icon: User },
     { id: 'store' as const,       label: 'Store Settings',   icon: Globe },
     { id: 'social' as const,      label: 'Social Media',     icon: Share2 },
+    { id: 'discord' as const,     label: 'Discord Alerts',   icon: MessageSquare },
     { id: 'security' as const,    label: 'Security',         icon: Lock },
     { id: 'maintenance' as const, label: 'Maintenance',      icon: Wrench },
     { id: 'ebay' as const,        label: 'eBay Integration', icon: ShoppingBag },
@@ -546,6 +591,86 @@ export default function AdminSettings() {
                     appear. Admin credentials grant full access past the maintenance screen.
                     This trigger is invisible to regular visitors.
                   </p>
+                </div>
+              </>
+            )}
+
+            {/* Discord Alerts */}
+            {activeSection === 'discord' && (
+              <>
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                    <MessageSquare className="w-5 h-5 text-indigo-500" />
+                    <h3 className="font-semibold text-gray-900">Discord Webhook</h3>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <p className="text-sm text-gray-500">
+                      Paste a Discord Incoming Webhook URL below. Notifications fire automatically via database triggers — no polling required.
+                    </p>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Webhook URL</label>
+                      <input
+                        type="url"
+                        value={discordWebhook}
+                        onChange={(e) => setDiscordWebhook(e.target.value)}
+                        placeholder="https://discord.com/api/webhooks/..."
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3 pt-1">
+                      <button
+                        onClick={saveDiscordWebhook}
+                        disabled={discordSaving}
+                        className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        {discordSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : discordSaved ? <CheckCircle className="w-4 h-4 text-green-400" /> : null}
+                        {discordSaving ? 'Saving...' : discordSaved ? 'Saved!' : 'Save Webhook'}
+                      </button>
+                      <button
+                        onClick={testDiscordWebhook}
+                        disabled={discordTesting || !discordWebhook}
+                        className="flex items-center gap-2 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 text-indigo-700 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        {discordTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {discordTesting ? 'Sending...' : 'Send Test'}
+                      </button>
+                      {discordTestResult && (
+                        <span className={`text-sm font-medium flex items-center gap-1.5 ${discordTestResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+                          {discordTestResult.ok ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                          {discordTestResult.msg}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                    <Bell className="w-5 h-5 text-gray-500" />
+                    <h3 className="font-semibold text-gray-900">What Gets Notified</h3>
+                  </div>
+                  <div className="p-6">
+                    <ul className="space-y-3">
+                      {[
+                        { emoji: '🛒', label: 'New Order Placed',        desc: 'Fires when a customer completes checkout' },
+                        { emoji: '📥', label: 'New Sell Submission',      desc: 'Fires when someone submits cards to sell' },
+                        { emoji: '✉️',  label: 'New Contact Message',     desc: 'Fires on every contact form submission' },
+                        { emoji: '🎫', label: 'New Support Ticket',       desc: 'Fires when a support ticket is opened' },
+                      ].map(({ emoji, label, desc }) => (
+                        <li key={label} className="flex items-start gap-3">
+                          <span className="text-lg leading-none mt-0.5">{emoji}</span>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{label}</p>
+                            <p className="text-xs text-gray-400">{desc}</p>
+                          </div>
+                          <CheckCircle className="w-4 h-4 text-green-500 ml-auto mt-0.5 flex-shrink-0" />
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-gray-400 mt-4 pt-4 border-t border-gray-100">
+                      Notifications are sent by the database directly — they fire even if no browser tab is open.
+                    </p>
+                  </div>
                 </div>
               </>
             )}
